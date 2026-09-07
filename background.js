@@ -175,10 +175,15 @@ function markEpisodeWatchedOnMDL(episodeNumber, rating) {
 
       // Último episódio: marca como Completed automaticamente, independente
       // de ter nota ou não (a nota é só um extra opcional por cima disso).
+      // Em qualquer outro episódio, garante que o status vira "Currently
+      // watching" — sem isso, um título que estava em "Plan to watch" (ou
+      // On-hold, etc.) continuava lá mesmo com o episódio marcado.
       const isFinalEpisode = total !== null && episodeNumber === total;
+      const statusSelect = document.querySelector("select.select-watch-status");
       if (isFinalEpisode) {
-        const statusSelect = document.querySelector("select.select-watch-status");
         if (statusSelect) setNativeValue(statusSelect, "2"); // 2 = Completed
+      } else {
+        if (statusSelect) setNativeValue(statusSelect, "1"); // 1 = Currently watching
       }
 
       // Nota (opcional, pode chegar numa chamada separada, depois do

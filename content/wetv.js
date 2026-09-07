@@ -17,12 +17,23 @@ const SITE_PARSER = {
     return { season: 1, episode: parseInt(match[2], 10), slug: match[1] };
   },
 
-  // Extrai o nome do drama a partir do <title> da aba.
-  // Ex: "Love Has Fireworks EP1 Watch Free with Eng Sub | WeTV" -> "Love Has Fireworks"
+  // Extrai o nome do drama a partir do <title> da aba. O WeTV já usou dois
+  // formatos diferentes (varia inclusive com Watch Free/HD/VIP dependendo
+  // da conta) — reconhece os dois:
+  //   Novo:  "EP1: Love Song in Winter - Watch HD Video Online - WeTV"
+  //   Antigo: "Love Has Fireworks EP1 Watch Free with Eng Sub | WeTV"
   getTitle() {
     const raw = document.title;
-    const match = raw.match(/^(.+?)\s+EP\d+/i);
-    return match ? match[1].trim() : null;
+
+    // Formato novo: nome vem DEPOIS do "EPxx: ", antes do " - Watch".
+    let match = raw.match(/^EP\d+:\s*(.+?)\s*-\s*Watch/i);
+    if (match) return match[1].trim();
+
+    // Formato antigo: nome vem ANTES do "EPxx".
+    match = raw.match(/^(.+?)\s+EP\d+/i);
+    if (match) return match[1].trim();
+
+    return null;
   }
 };
 

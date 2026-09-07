@@ -26,14 +26,24 @@ window.MDLSyncCommon = {
   // Tenta detectar por alguns segundos, caso o site seja uma SPA
   // (Angular/React/Vue) que ainda não terminou de renderizar o título/
   // conteúdo quando o content script roda (ex: kisskh).
-  _attemptDetection(SITE_PARSER) {
+  //
+  // "staleTitleSnapshot" (opcional): quando chamado por causa de uma troca
+  // de URL (ex: clicar em "próximo episódio"), guarda o <title> de ANTES
+  // da troca. Enquanto o título da aba ainda não mudou de verdade, a
+  // detecção é tratada como "ainda não pronta" e continua tentando — sem
+  // isso, a extensão às vezes lia o título antigo (ainda não atualizado
+  // pelo site) e achava que tinha detectado certo, exigindo um F5 manual
+  // pra corrigir.
+  _attemptDetection(SITE_PARSER, staleTitleSnapshot = null) {
     const maxAttempts = 16; // ~8 segundos no total
     const intervalMs = 500;
     let attempts = 0;
 
     const tryDetect = async () => {
       attempts++;
-      const episodeData = this._detectEpisode(SITE_PARSER);
+
+      const titleStillStale = staleTitleSnapshot !== null && document.title === staleTitleSnapshot;
+      const episodeData = titleStillStale ? null : this._detectEpisode(SITE_PARSER);
 
       if (episodeData) {
         console.log("[MDL Sync] Episódio detectado:", episodeData);
@@ -80,8 +90,9 @@ window.MDLSyncCommon = {
     setInterval(() => {
       if (window.location.href !== lastUrl) {
         lastUrl = window.location.href;
+        const titleBeforeChange = document.title;
         console.log("[MDL Sync] URL mudou, tentando detectar de novo...");
-        this._attemptDetection(SITE_PARSER);
+        this._attemptDetection(SITE_PARSER, titleBeforeChange);
       }
     }, 1000);
   },
@@ -173,7 +184,21 @@ window.MDLSyncCommon = {
       video.addEventListener("timeupdate", () => {
         if (myGeneration !== this._autoTrackGeneration) return;
         if (synced) return;
+
+        // Se o site trocou a tag <video> inteira (não só o src), esse
+        // elemento antigo pode ter sido removido da página. Reanexa no
+        // vídeo novo em vez de continuar escutando um elemento morto.
+        if (!document.contains(video)) {
+          attach();
+          return;
+        }
+
         if (!video.duration || isNaN(video.duration)) return;
+
+        // Ignora clipes curtos (vinhetas, "Rakuten Viki" antes do episódio,
+        // anúncios, etc.) — nenhum episódio de verdade tem menos que isso.
+        const MIN_EPISODE_DURATION_SECONDS = 180; // 3 minutos
+        if (video.duration < MIN_EPISODE_DURATION_SECONDS) return;
 
         const pct = video.currentTime / video.duration;
         if (pct >= AUTO_SYNC_THRESHOLD) {
