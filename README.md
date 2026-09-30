@@ -1,4 +1,4 @@
-# MDL Sync (experimental) — v0.1.3
+# MDL-Sync — v0.1.4
 
 **[English](#english) | [Português](#português-brasil)**
 
@@ -6,9 +6,9 @@
 
 ## English
 
-A browser extension that automatically tracks your episode progress on **MyDramaList** while you watch dramas on supported streaming sites.
+A browser extension that automatically tracks your episode progress on **MyDramaList** while you watch dramas on supported streaming sites (or locally, via VLC).
 
-⚠️ This is an experimental, early-stage personal project. It's not affiliated with MyDramaList or any streaming site. Expect bugs, and feel free to open an issue if you run into one.
+⚠️ This is an early-stage personal project. It's not affiliated with MyDramaList or any streaming site. Expect bugs, and feel free to open an issue if you run into one.
 
 ### What it does
 
@@ -19,6 +19,7 @@ A browser extension that automatically tracks your episode progress on **MyDrama
 - On the **final episode** of a drama, the title is automatically marked as **Completed** on MDL when synced. An optional rating picker (MDL's own 1.0–10.0 scale) also appears, available at any time, independent of the sync itself.
 - Any non-final episode explicitly sets the status to **Currently Watching** on MDL, so a title sitting in "Plan to Watch" or "On-Hold" gets moved correctly instead of staying put.
 - Native browser notifications on auto-sync completion — these show up even when the video is in fullscreen (where the on-page badge is hidden).
+- Can also track episodes played locally in **VLC** (e.g. files downloaded from Telegram), via VLC's built-in Web Interface — see the VLC section below.
 
 ### Requirements
 
@@ -51,7 +52,20 @@ If you ever pick the wrong title by mistake, open the extension's popup, find th
 - iQIYI
 - clubdodorama.com
 - kisskh.co
+- tokusatsus.com (TokuDrive)
 - 123flmsfree.com, ver.123pelicula.com, flixlat.com, play.cuevana19.com (same template/parser, since they share the same URL structure)
+- **VLC** (local files), via VLC's Web Interface — see below
+
+### Tracking local files with VLC
+
+For dramas you download (e.g. from Telegram) and watch in VLC instead of a streaming site:
+
+1. In VLC, go to **Tools → Preferences**, switch to **All** settings (bottom-left), then **Interface → Main interfaces**, and check **Web**.
+2. Go to the **Lua** section that appears under Main interfaces, and set a password.
+3. Restart VLC and open `http://localhost:8080` in your browser while a video is playing — you should see VLC's web player.
+4. The extension will detect the playing file's name and track progress the same way it does on streaming sites.
+
+Filename recognition currently supports patterns like `Drama Name - EP01.mp4`, `Drama.Name.S01E05.1080p.mkv`, and `[Group] Drama Name - 05.mkv`. If your files use a different naming pattern, open an issue with an example filename.
 
 ### Adding support for a new streaming site
 
@@ -72,14 +86,24 @@ Also add the domain to `host_permissions`.
 
 Nothing else needs to change — the badge, messaging to the background script, title-mapping cache, and MDL sync logic are all shared via `common.js` and `background.js`.
 
+### License
+
+MIT — see [LICENSE](./LICENSE).
+
 ### Changelog
+
+**v0.1.4**
+- Renamed the extension to **MDL-Sync**.
+- Added a `LICENSE` file (MIT).
+- Added support for **tokusatsus.com (TokuDrive)**. This site uses random per-episode IDs in the URL (no stable identifier), so detection is based entirely on page content: the episode number from `<h1 class="video-title">` (handles both "Episódio 1" and bare "01" formats) and the drama name from the `.playlist-header` heading.
+- Added support for tracking local files played in **VLC**, via VLC's built-in Web Interface (`localhost:8080`). Since VLC has no `<video>` element or per-episode URL, this uses a dedicated polling approach: reads the filename from the `#mediaTitle` element, and progress from VLC's `/requests/status.json` API (with a DOM-based fallback using `#currentTime`/`#totalTime` if that request fails).
 
 **v0.1.3**
 
 Fixes:
 - Fixed Viki auto-sync firing almost instantly, before the episode even starts. Viki plays a ~4 second "Rakuten Viki" branding clip before the actual episode, and that clip is also a `<video>` element — 80% of 4 seconds is reached in about 3 seconds, so auto-sync was triggering on the branding clip instead of the real episode. Any video shorter than 3 minutes is now ignored, since no real episode is that short.
 - Fixed Viki failing to detect episodes opened via "Continue Watching." Those links use a short URL (e.g. `viki.com/videos/12345v`) that doesn't contain the show's slug or episode number, unlike the full URL format. The extension now reads this info from the page's `og:url` meta tag instead, which always contains the full slug/episode info regardless of which URL format is being viewed. As a side benefit, this also makes the stored title mapping independent of the on-screen display language.
-- Fixed a "stale page title" race condition on single-page-app sites (Viki, kisskh, etc.). When navigating to a new episode without a full page reload, the extension could sometimes read the previous episode's page title for a brief moment before it updated, causing it to detect the wrong episode (or none) — requiring a manual refresh to fix. The extension now waits until the title actually changes before accepting a detection after a URL change.
+- Fixed a "stale page title/episode" race condition on single-page-app sites (Viki, kisskh, etc.). When navigating to a new episode without a full page reload (including autoplay-triggered transitions), the extension could sometimes detect the previous episode for a brief moment before the new one loaded, requiring a manual refresh to fix. It now compares the actually-detected episode (not just the page title) before accepting a new detection after a URL change.
 - Fixed WeTV title parsing after WeTV changed their page title format (the episode number now appears before the drama name). Both the old and new formats are now supported, and parsing no longer depends on "Watch Free / Watch HD / Watch VIP" text, which varies depending on the viewer's account/plan.
 - Fixed episodes not updating the watch status on MDL. Syncing a non-final episode now explicitly sets the status to "Currently Watching," so a title previously in "Plan to Watch" (or On-Hold, etc.) moves correctly instead of staying put.
 - Auto-sync now re-attaches correctly if a site swaps out the entire `<video>` element when transitioning from an intro clip to the real episode player.
@@ -115,9 +139,9 @@ Bug reports, additional site requests, and general feedback are all welcome. Ple
 
 ## Português (Brasil)
 
-Uma extensão de navegador que sincroniza automaticamente seu progresso de episódios no **MyDramaList** enquanto você assiste doramas em sites de streaming suportados.
+Uma extensão de navegador que sincroniza automaticamente seu progresso de episódios no **MyDramaList** enquanto você assiste doramas em sites de streaming suportados (ou localmente, via VLC).
 
-⚠️ Isso é um projeto pessoal experimental, em estágio inicial. Não tem nenhuma ligação oficial com o MyDramaList nem com nenhum site de streaming. Esperem bugs, e sintam-se à vontade pra abrir uma issue se encontrar algum.
+⚠️ Isso é um projeto pessoal em estágio inicial. Não tem nenhuma ligação oficial com o MyDramaList nem com nenhum site de streaming. Esperem bugs, e sintam-se à vontade pra abrir uma issue se encontrar algum.
 
 ### O que ela faz
 
@@ -128,6 +152,7 @@ Uma extensão de navegador que sincroniza automaticamente seu progresso de epis�
 - No **último episódio** de um drama, o título é marcado automaticamente como **Completed** no MDL assim que sincroniza. Um seletor de nota opcional (na própria escala do MDL, de 1.0 a 10.0) também aparece, disponível a qualquer momento, independente da sincronização em si.
 - Qualquer episódio que não seja o último força o status pra **Currently Watching** no MDL, então um título parado em "Plan to Watch" ou "On-Hold" é movido corretamente em vez de ficar preso lá.
 - Notificações nativas do navegador quando o auto-sync termina — aparecem mesmo com o vídeo em tela cheia (onde o badge da página fica escondido).
+- Também rastreia episódios assistidos localmente no **VLC** (ex: arquivos baixados do Telegram), através da interface Web nativa do VLC — veja a seção do VLC abaixo.
 
 ### Requisitos
 
@@ -160,7 +185,20 @@ Se escolher o título errado por engano, abre o popup da extensão, acha a entra
 - iQIYI
 - clubdodorama.com
 - kisskh.co
+- tokusatsus.com (TokuDrive)
 - 123flmsfree.com, ver.123pelicula.com, flixlat.com, play.cuevana19.com (mesmo template/parser, já que compartilham a mesma estrutura de URL)
+- **VLC** (arquivos locais), via interface Web do VLC — veja abaixo
+
+### Rastreando arquivos locais com o VLC
+
+Pra doramas que você baixa (ex: do Telegram) e assiste no VLC em vez de um site de streaming:
+
+1. No VLC, vá em **Ferramentas → Preferências**, mude pra mostrar **Todas** as configurações (canto inferior esquerdo), depois **Interface → Interfaces principais**, e marque **Web**.
+2. Vá na seção **Lua** que aparece embaixo de Interfaces principais, e defina uma senha.
+3. Reinicie o VLC e abra `http://localhost:8080` no navegador enquanto um vídeo estiver tocando — deve aparecer o player web do VLC.
+4. A extensão vai detectar o nome do arquivo tocando e acompanhar o progresso igual faz nos sites de streaming.
+
+O reconhecimento de nome de arquivo hoje suporta padrões como `Drama Name - EP01.mp4`, `Drama.Name.S01E05.1080p.mkv` e `[Grupo] Drama Name - 05.mkv`. Se seus arquivos usarem um padrão diferente, abra uma issue com um exemplo de nome de arquivo.
 
 ### Como adicionar suporte a um novo site de streaming
 
@@ -181,14 +219,24 @@ E adicione o domínio em `host_permissions` também.
 
 Nada mais precisa mudar — o badge, o envio de mensagens pro background, o cache de mapeamento de títulos e a lógica de sync no MDL são todos compartilhados via `common.js` e `background.js`.
 
+### Licença
+
+MIT — veja [LICENSE](./LICENSE).
+
 ### Changelog
+
+**v0.1.4**
+- Extensão renomeada pra **MDL-Sync**.
+- Adicionado arquivo `LICENSE` (MIT).
+- Adicionado suporte pro **tokusatsus.com (TokuDrive)**. Esse site usa IDs aleatórios por episódio na URL (sem identificador estável), então a detecção é baseada inteiramente no conteúdo da página: o número do episódio vem do `<h1 class="video-title">` (cobre tanto "Episódio 1" quanto só "01") e o nome do drama vem do cabeçalho `.playlist-header`.
+- Adicionado suporte pra rastrear arquivos locais tocados no **VLC**, via interface Web nativa do VLC (`localhost:8080`). Como o VLC não tem tag `<video>` nem URL por episódio, isso usa uma abordagem própria de polling: lê o nome do arquivo do elemento `#mediaTitle`, e o progresso da API `/requests/status.json` do VLC (com um plano B via DOM usando `#currentTime`/`#totalTime` caso essa requisição falhe).
 
 **v0.1.3**
 
 Correções:
 - Corrigido o auto-sync do Viki disparando quase instantaneamente, antes do episódio nem começar. O Viki toca um clipe de ~4 segundos da marca "Rakuten Viki" antes do episódio de verdade, e esse clipe também é um elemento `<video>` — 80% de 4 segundos é atingido em uns 3 segundos, então o auto-sync disparava em cima da vinheta em vez do episódio real. Qualquer vídeo com menos de 3 minutos agora é ignorado, já que nenhum episódio de verdade é tão curto.
 - Corrigido o Viki não detectando episódios abertos pelo "Continue Watching". Esses links usam uma URL curta (ex: `viki.com/videos/12345v`) que não contém o slug nem o número do episódio, diferente da URL completa. A extensão agora lê essa informação da meta tag `og:url` da página, que sempre traz o slug/episódio completo independente de qual formato de URL está sendo usado. De bônus, isso também torna o mapeamento salvo independente do idioma exibido na tela.
-- Corrigida uma condição de corrida de "título desatualizado" em sites de página única (Viki, kisskh, etc.). Ao navegar pra um episódio novo sem recarregar a página inteira, a extensão às vezes lia o título do episódio anterior por um instante antes dele atualizar, detectando o episódio errado (ou nenhum) — exigindo um refresh manual pra corrigir. Agora ela espera o título realmente mudar antes de aceitar uma detecção depois de uma troca de URL.
+- Corrigida uma condição de corrida de "título/episódio desatualizado" em sites de página única (Viki, kisskh, etc.). Ao navegar pra um episódio novo sem recarregar a página inteira (incluindo trocas automáticas por autoplay), a extensão às vezes detectava o episódio anterior por um instante antes do novo carregar, exigindo um refresh manual pra corrigir. Agora ela compara o episódio realmente detectado (não só o título da página) antes de aceitar uma nova detecção depois de uma troca de URL.
 - Corrigido o parsing de título do WeTV depois que o WeTV mudou o formato do título da página (o número do episódio agora aparece antes do nome do drama). Os dois formatos, antigo e novo, agora são suportados, e o parsing não depende mais do texto "Watch Free / Watch HD / Watch VIP", que varia conforme a conta/plano de quem está assistindo.
 - Corrigidos episódios sincronizando sem atualizar o status de andamento no MDL. Sincronizar um episódio que não é o último agora força o status pra "Currently Watching", então um título que estava em "Plan to Watch" (ou On-Hold, etc.) é movido corretamente em vez de ficar preso lá.
 - O auto-sync agora reconecta corretamente se um site trocar a tag `<video>` inteira na transição da vinheta pro player do episódio real.

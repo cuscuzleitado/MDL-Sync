@@ -7,7 +7,25 @@
 // de propósito. Comentários ficam em português, são só pra devs.
 // ============================================================
 
-const AUTO_SYNC_THRESHOLD = 0.8; // 80%
+// Valor padrão — sobrescrito pelo que estiver salvo em chrome.storage.local
+// (configurável na página de opções da extensão). "let" porque muda em
+// runtime; o listener no final mantém sincronizado se o usuário alterar a
+// opção com a página já aberta.
+let AUTO_SYNC_THRESHOLD = 0.8; // 80%
+
+chrome.storage.local.get("syncThreshold", ({ syncThreshold }) => {
+  if (typeof syncThreshold === "number") AUTO_SYNC_THRESHOLD = syncThreshold;
+});
+
+chrome.storage.onChanged.addListener((changes) => {
+  if (changes.syncThreshold && typeof changes.syncThreshold.newValue === "number") {
+    AUTO_SYNC_THRESHOLD = changes.syncThreshold.newValue;
+    // Se já existe um badge na tela (usuário mudou a opção com o vídeo já
+    // aberto), atualiza o texto na hora em vez de só valer a partir do
+    // próximo episódio.
+    if (window.MDLSyncCommon) window.MDLSyncCommon._updateBadgeAutoLabel();
+  }
+});
 
 // Notas do MDL: 1.0 a 10.0, de 0.5 em 0.5. [valor, rótulo exibido]
 const RATING_OPTIONS = [
@@ -27,14 +45,16 @@ window.MDLSyncCommon = {
   // (Angular/React/Vue) que ainda não terminou de renderizar o título/
   // conteúdo quando o content script roda (ex: kisskh).
   //
-  // "staleTitleSnapshot" (opcional): quando chamado por causa de uma troca
-  // de URL (ex: clicar em "próximo episódio"), guarda o <title> de ANTES
-  // da troca. Enquanto o título da aba ainda não mudou de verdade, a
-  // detecção é tratada como "ainda não pronta" e continua tentando — sem
-  // isso, a extensão às vezes lia o título antigo (ainda não atualizado
-  // pelo site) e achava que tinha detectado certo, exigindo um F5 manual
-  // pra corrigir.
-  _attemptDetection(SITE_PARSER, staleTitleSnapshot = null) {
+  // "staleEpisodeData" (opcional): quando chamado por causa de uma troca de
+  // URL (ex: autoplay indo pro próximo episódio no Viki), guarda o episódio
+  // detectado ANTES da troca. Enquanto a nova detecção continuar batendo
+  // com o episódio antigo, é tratada como "ainda não pronta" e continua
+  // tentando — sem isso, a extensão às vezes ficava presa mostrando o
+  // episódio anterior, exigindo um F5 manual pra corrigir. Comparamos pelo
+  // episódio detectado (não pelo <title> da aba), já que alguns sites (ex:
+  // Viki) identificam o episódio pela URL/meta tags, e o <title> pode nem
+  // atualizar durante uma troca automática de episódio.
+  _attemptDetection(SITE_PARSER, staleEpisodeData = null) {
     const maxAttempts = 16; // ~8 segundos no total
     const intervalMs = 500;
     let attempts = 0;
@@ -42,11 +62,19 @@ window.MDLSyncCommon = {
     const tryDetect = async () => {
       attempts++;
 
-      const titleStillStale = staleTitleSnapshot !== null && document.title === staleTitleSnapshot;
-      const episodeData = titleStillStale ? null : this._detectEpisode(SITE_PARSER);
+      let episodeData = this._detectEpisode(SITE_PARSER);
+
+      const stillStale =
+        staleEpisodeData &&
+        episodeData &&
+        episodeData.key === staleEpisodeData.key &&
+        episodeData.episode === staleEpisodeData.episode;
+
+      if (stillStale) episodeData = null; // ainda não atualizou de verdade, continua tentando
 
       if (episodeData) {
         console.log("[MDL Sync] Episódio detectado:", episodeData);
+        this._lastKnownEpisodeData = episodeData;
 
         const alreadySynced = await this._wasAlreadySynced(episodeData);
         const totalEpisodes = await this._getTotalEpisodes(episodeData.key);
@@ -80,19 +108,26 @@ window.MDLSyncCommon = {
   },
 
   // Sites SPA podem trocar de episódio sem recarregar a página (ex: clicar
-  // em "próximo"). Isso detecta a mudança de URL e roda a detecção de novo,
-  // sem criar um novo monitor a cada vez (só um setInterval por página).
+  // em "próximo", ou autoplay indo pro episódio seguinte sozinho). Isso
+  // detecta a mudança de URL e roda a detecção de novo, sem criar um novo
+  // monitor a cada vez (só um setInterval por página).
   _watchUrlChanges(SITE_PARSER) {
     if (this._watchingUrl) return;
     this._watchingUrl = true;
 
-    let lastUrl = window.location.href;
+    // Compara só o pathname, não a URL inteira: todos os parsers de site
+    // identificam o episódio pelo caminho (ver getSeasonEpisode de cada
+    // um), nunca por query string/hash. Comparar a URL inteira fazia o
+    // badge ser recriado do zero (fechando qualquer coisa aberta, ex: o
+    // seletor de nota) sempre que o player mudava algo irrelevante na
+    // query string/hash (telemetria, posição de playback, etc.) sem o
+    // episódio ter mudado de verdade.
+    let lastPath = window.location.pathname;
     setInterval(() => {
-      if (window.location.href !== lastUrl) {
-        lastUrl = window.location.href;
-        const titleBeforeChange = document.title;
+      if (window.location.pathname !== lastPath) {
+        lastPath = window.location.pathname;
         console.log("[MDL Sync] URL mudou, tentando detectar de novo...");
-        this._attemptDetection(SITE_PARSER, titleBeforeChange);
+        this._attemptDetection(SITE_PARSER, this._lastKnownEpisodeData || null);
       }
     }, 1000);
   },
@@ -131,6 +166,24 @@ window.MDLSyncCommon = {
       const map = syncedEpisodes || {};
       map[this._syncedStorageKey(episodeData)] = Date.now();
       chrome.storage.local.set({ syncedEpisodes: map });
+    });
+  },
+
+  // Maior episódio já sincronizado com sucesso pra esse título (0 se
+  // nenhum ainda). Usado como sanity-check antes do auto-sync: ver
+  // _setupAutoTrack.
+  _getMaxSyncedEpisode(key) {
+    return new Promise((resolve) => {
+      chrome.storage.local.get("syncedEpisodes", ({ syncedEpisodes }) => {
+        const prefix = `${key}:`;
+        let max = 0;
+        for (const storedKey of Object.keys(syncedEpisodes || {})) {
+          if (!storedKey.startsWith(prefix)) continue;
+          const ep = parseInt(storedKey.slice(prefix.length), 10);
+          if (!isNaN(ep) && ep > max) max = ep;
+        }
+        resolve(max);
+      });
     });
   },
 
@@ -202,17 +255,51 @@ window.MDLSyncCommon = {
 
         const pct = video.currentTime / video.duration;
         if (pct >= AUTO_SYNC_THRESHOLD) {
-          synced = true;
-          console.log(`[MDL Sync] ${AUTO_SYNC_THRESHOLD * 100}% atingido — sincronizando automaticamente...`);
-          this._sendSyncMessage({ type: "SYNC_EPISODE", source: "auto", data: episodeData }, (response) => {
-            if (response?.ok) {
-              console.log("[MDL Sync] Auto-sync concluído.");
-              this._markAsSynced(episodeData);
-              this._checkAndShowFinalRatingRow(episodeData, response.result);
-              this._setBadgeSyncedState("Synced automatically ✓");
-            } else {
-              console.warn("[MDL Sync] Auto-sync falhou:", response?.error);
+          // Só sincroniza se a aba estiver realmente em foco/visível. Sem
+          // isso, um vídeo com autoplay do próximo episódio pode continuar
+          // avançando sozinho numa aba em segundo plano (ex: alternando
+          // entre duas abas de dramas diferentes) e sincronizar episódios
+          // que você nunca chegou a ver de verdade — foi exatamente isso
+          // que causou um "Completed" incorreto num teste. Não retorna
+          // (não trava o listener): se você voltar pra essa aba antes do
+          // vídeo mudar de episódio de novo, sincroniza normalmente.
+          if (document.visibilityState !== "visible") {
+            console.log("[MDL Sync] Threshold atingido mas a aba está em segundo plano — auto-sync pausado até você voltar pra ela.");
+            return;
+          }
+
+          synced = true; // trava o listener já — o guard abaixo só decide se ENVIA, não se trava.
+
+          this._getMaxSyncedEpisode(episodeData.key).then((maxSynced) => {
+            const jump = episodeData.episode - maxSynced;
+
+            // Se esse título já vinha sincronizando normalmente (maxSynced > 0)
+            // e o episódio detectado agora saltou muito além do esperado
+            // (ex: veio do 3 pro 32 do nada), a detecção do site provavelmente
+            // pegou o episódio errado — bloqueia o auto-sync em vez de arriscar
+            // marcar "Completed" sem ter sido esse o episódio de verdade. O
+            // "Mark on MDL" manual continua disponível se for intencional.
+            if (maxSynced > 0 && jump > 3) {
+              console.warn(
+                `[MDL Sync] Salto suspeito de episódio em "${episodeData.title}" ` +
+                `(último sincronizado: E${maxSynced}, detectado agora: E${episodeData.episode}). ` +
+                `Auto-sync BLOQUEADO por segurança.`
+              );
+              this._setBadgeSyncedState(`⚠ Skipped — jump to E${episodeData.episode}`);
+              return;
             }
+
+            console.log(`[MDL Sync] ${AUTO_SYNC_THRESHOLD * 100}% atingido — sincronizando automaticamente...`);
+            this._sendSyncMessage({ type: "SYNC_EPISODE", source: "auto", data: episodeData }, (response) => {
+              if (response?.ok) {
+                console.log("[MDL Sync] Auto-sync concluído.");
+                this._markAsSynced(episodeData);
+                this._checkAndShowFinalRatingRow(episodeData, response.result);
+                this._setBadgeSyncedState("Synced automatically ✓");
+              } else {
+                console.warn("[MDL Sync] Auto-sync falhou:", response?.error);
+              }
+            });
           });
         }
       });
@@ -222,18 +309,23 @@ window.MDLSyncCommon = {
   },
 
   // Pequeno indicativo visual no badge de que o auto-sync está ativo
-  // nesse episódio.
+  // nesse episódio. Atualiza o texto se já existir (ex: quando a % é
+  // trocada nas Settings com o badge já na tela) em vez de ignorar.
   _updateBadgeAutoLabel() {
     const badge = document.getElementById("mdl-sync-badge");
     if (!badge) return;
-    if (badge.querySelector(".mdl-sync-auto-label")) return;
 
     const topRow = badge.querySelector(".mdl-sync-top-row") || badge;
-    const autoLabel = document.createElement("span");
-    autoLabel.className = "mdl-sync-auto-label";
-    autoLabel.textContent = `🔄 auto ${AUTO_SYNC_THRESHOLD * 100}%`;
-    autoLabel.style.cssText = "font-size: 11px; color: #4da3ff; margin-left: 4px;";
-    topRow.appendChild(autoLabel);
+    let autoLabel = badge.querySelector(".mdl-sync-auto-label");
+    if (!autoLabel) {
+      autoLabel = document.createElement("span");
+      autoLabel.className = "mdl-sync-auto-label";
+      autoLabel.style.cssText = "font-size: 11px; color: #4da3ff; margin-left: 4px;";
+      topRow.appendChild(autoLabel);
+    }
+    // Sem emoji, sem % — só o essencial: o auto-tracking está ativo
+    // nesse episódio.
+    autoLabel.textContent = "AUTO ACTIVATED";
   },
 
   // Deixa o botão principal do badge permanentemente no estado
@@ -345,10 +437,15 @@ window.MDLSyncCommon = {
     topRow.className = "mdl-sync-top-row";
     topRow.style.cssText = "display: flex; align-items: center; gap: 10px;";
 
+    // "S1" some quando o site não informa uma temporada real (a maioria
+    // não informa — ver comentário em _detectEpisode/getSeasonEpisode de
+    // cada parser); só aparece quando for de fato diferente de 1.
+    const seasonPrefix = data.season && data.season > 1 ? `S${data.season}` : "";
+    const episodePart = `${seasonPrefix}E${data.episode}`;
     const label = document.createElement("span");
     label.textContent = isFinalEpisode
-      ? `${data.title} — S${data.season}E${data.episode} (Final)`
-      : `${data.title} — S${data.season}E${data.episode}`;
+      ? `${data.title} — ${episodePart} (Final)`
+      : `${data.title} — ${episodePart}`;
     topRow.appendChild(label);
 
     const actionArea = document.createElement("div");

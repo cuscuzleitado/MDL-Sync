@@ -4,22 +4,138 @@
   <meta charset="utf-8" />
   <style>
     body { width: 300px; font-family: sans-serif; padding: 12px; background: #1c1c1e; color: #fff; }
-    h1 { font-size: 14px; margin: 0 0 10px; }
+    .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    h1 { font-size: 14px; margin: 0; }
+    #settingsBtn, #backBtn, #mappedBackBtn {
+      background: #2c2c2e; color: #ccc; border: 1px solid #444;
+      border-radius: 6px; padding: 4px 9px; font-size: 12px; cursor: pointer;
+    }
+    #settingsBtn:hover, #backBtn:hover, #mappedBackBtn:hover { background: #3a3a3c; color: #fff; }
     h2 { font-size: 12px; margin: 14px 0 6px; color: #aaa; text-transform: uppercase; }
-    .item { font-size: 13px; background: #2c2c2e; padding: 8px 10px; border-radius: 8px; margin-bottom: 6px; }
+    .item { font-size: 13px; background: #2c2c2e; padding: 8px 10px; border-radius: 8px;
+      height: 100%; box-sizing: border-box; display: flex; flex-direction: column;
+      justify-content: flex-start; gap: 2px; }
+    .drama-name { font-weight: 600; }
+    .episode-line { font-size: 12px; color: #ccc; }
+    .card { display: flex; gap: 8px; margin-bottom: 10px; }
+    .cover-wrap { flex: 0 0 84px; border-radius: 8px; overflow: hidden; background: #2c2c2e; }
+    .cover-wrap img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .cover-wrap.hidden { display: none; }
+    .info-stack { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+    .info { flex: 1; min-width: 0; }
+    .mdl-link {
+      display: block; text-align: center; font-size: 12px; text-decoration: none;
+      background: #e91e63; color: #fff; padding: 8px 0; border-radius: 8px;
+      margin-bottom: 10px;
+    }
+    .mdl-link:hover { background: #c2185b; }
+
+    .rating-row { display: flex; gap: 8px; }
+    .rating-box {
+      flex: 0 0 54px; height: 54px; border-radius: 8px; background: #f0632b;
+      color: #fff; font-weight: 700; font-size: 18px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .rating-info {
+      flex: 1; min-width: 0; background: #2c2c2e; border-radius: 8px;
+      padding: 6px 10px; display: flex; flex-direction: column; justify-content: center; gap: 4px;
+    }
+    .rating-info a { color: #ccc; text-decoration: none; font-size: 11px; }
+    .rating-info a:hover { color: #fff; text-decoration: underline; }
+    .rating-info b { color: #fff; }
+    .mapped-btn {
+      width: 100%; text-align: left; background: #2c2c2e; color: #ccc;
+      border: 1px solid #444; border-radius: 8px; padding: 8px 10px;
+      font-size: 12px; cursor: pointer; display: flex; justify-content: space-between;
+    }
+    .mapped-btn:hover { background: #3a3a3c; color: #fff; }
+    .mapped-btn .count { color: #4da3ff; }
     .map-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px;
       background: #2c2c2e; padding: 6px 8px; border-radius: 6px; margin-bottom: 4px; }
     .map-row a { color: #4da3ff; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 190px; }
     .map-row button { background: #e74c3c; border: none; color: #fff; border-radius: 4px; padding: 3px 6px; cursor: pointer; font-size: 11px; }
     .empty { font-size: 12px; color: #999; }
+    .hidden { display: none; }
+
+    .threshold-options { display: flex; gap: 8px; }
+    .threshold-options label {
+      flex: 1; text-align: center; font-size: 13px; padding: 8px 0;
+      background: #2c2c2e; border: 1px solid #444; border-radius: 8px;
+      cursor: pointer; user-select: none;
+    }
+    .threshold-options input { display: none; }
+    .threshold-options label.active { background: #4da3ff; border-color: #4da3ff; color: #fff; font-weight: 600; }
+    .hint { font-size: 11px; color: #999; margin: 8px 0 0; }
+    .help-button {
+      display: block; text-align: center; text-decoration: none;
+      background: #e91e63; color: #fff; font-size: 13px; font-weight: 600;
+      padding: 9px 0; border-radius: 8px; margin-top: 14px;
+    }
+    .help-button:hover { background: #c2185b; }
+    #savedNote { font-size: 11px; color: #2ecc71; height: 14px; margin-top: 8px; opacity: 0; transition: opacity .2s; }
+    #savedNote.show { opacity: 1; }
   </style>
 </head>
 <body>
-  <h1>MDL Sync</h1>
-  <div id="lastDetected" class="empty">No episode detected yet.</div>
+  <!-- TELA PRINCIPAL -->
+  <div id="mainView">
+    <div class="header">
+      <h1>MDL-Sync</h1>
+      <button id="settingsBtn" title="Settings">⚙ Settings</button>
+    </div>
 
-  <h2>Mapped titles</h2>
-  <div id="mappings" class="empty">No titles mapped yet.</div>
+    <div class="card">
+      <div id="coverWrap" class="cover-wrap hidden"><img id="coverImg" alt="" /></div>
+      <div class="info-stack">
+        <div class="info">
+          <div id="lastDetected" class="empty">No episode detected yet.</div>
+        </div>
+        <div id="ratingRow" class="rating-row hidden">
+          <div id="ratingBox" class="rating-box">–</div>
+          <div class="rating-info">
+            <a id="statsLink" target="_blank">Ratings: <b id="ratingText">–</b></a>
+            <a id="reviewsLink" target="_blank">Reviews: <span id="reviewText">–</span></a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <a id="mdlLink" class="mdl-link hidden" target="_blank">Open on MyDramaList</a>
+
+    <button id="mappedBtn" class="mapped-btn">
+      <span>Mapped Titles</span>
+      <span class="count" id="mappedCount">0</span>
+    </button>
+  </div>
+
+  <!-- TELA DE MAPPED TITLES (mesma janela, sem abrir aba nova) -->
+  <div id="mappedView" class="hidden">
+    <div class="header">
+      <h1>Mapped Titles</h1>
+      <button id="mappedBackBtn">← Back</button>
+    </div>
+    <div id="mappings" class="empty">No titles mapped yet.</div>
+  </div>
+
+  <!-- TELA DE OPÇÕES (mesma janela, sem abrir aba nova) -->
+  <div id="settingsView" class="hidden">
+    <div class="header">
+      <h1>Settings</h1>
+      <button id="backBtn">← Back</button>
+    </div>
+
+    <h2>Auto-sync threshold</h2>
+    <div class="threshold-options" id="thresholdOptions">
+      <label data-value="0.8"><input type="radio" name="threshold" value="0.8" /><span>80%</span></label>
+      <label data-value="0.85"><input type="radio" name="threshold" value="0.85" /><span>85%</span></label>
+      <label data-value="0.9"><input type="radio" name="threshold" value="0.9" /><span>90%</span></label>
+    </div>
+    <p class="hint">Episode is marked as watched once playback passes this point.</p>
+    <div id="savedNote">Saved ✓</div>
+
+    <a class="help-button" href="https://github.com/cuscuzleitado/MDL-Sync/blob/main/README.md"
+       target="_blank" rel="noopener">Need help?</a>
+  </div>
 
   <script src="popup.js"></script>
 </body>
