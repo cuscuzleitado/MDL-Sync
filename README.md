@@ -97,6 +97,11 @@ MIT — see [LICENSE](./LICENSE).
 - Added a `LICENSE` file (MIT).
 - Added support for **tokusatsus.com (TokuDrive)**. This site uses random per-episode IDs in the URL (no stable identifier), so detection is based entirely on page content: the episode number from `<h1 class="video-title">` (handles both "Episódio 1" and bare "01" formats) and the drama name from the `.playlist-header` heading.
 - Added support for tracking local files played in **VLC**, via VLC's built-in Web Interface (`localhost:8080`). Since VLC has no `<video>` element or per-episode URL, this uses a dedicated polling approach: reads the filename from the `#mediaTitle` element, and progress from VLC's `/requests/status.json` API (with a DOM-based fallback using `#currentTime`/`#totalTime` if that request fails).
+- Redesigned the popup with the drama cover and buttons to open the drama page, view drama statistics, and view drama reviews.
+- Added a dedicated tab in the popup to display all mapped dramas, replacing the previous cluttered layout.
+- Added a **Settings** button with an option to change the auto-tracking threshold between **80%, 85%, and 90%**.
+- Added a **Need Help?** button that redirects to the README for additional help and information.
+- Mappings are now automatically removed **1 hour after a drama is completed**.
 
 **v0.1.3**
 
@@ -230,6 +235,11 @@ MIT — veja [LICENSE](./LICENSE).
 - Adicionado arquivo `LICENSE` (MIT).
 - Adicionado suporte pro **tokusatsus.com (TokuDrive)**. Esse site usa IDs aleatórios por episódio na URL (sem identificador estável), então a detecção é baseada inteiramente no conteúdo da página: o número do episódio vem do `<h1 class="video-title">` (cobre tanto "Episódio 1" quanto só "01") e o nome do drama vem do cabeçalho `.playlist-header`.
 - Adicionado suporte pra rastrear arquivos locais tocados no **VLC**, via interface Web nativa do VLC (`localhost:8080`). Como o VLC não tem tag `<video>` nem URL por episódio, isso usa uma abordagem própria de polling: lê o nome do arquivo do elemento `#mediaTitle`, e o progresso da API `/requests/status.json` do VLC (com um plano B via DOM usando `#currentTime`/`#totalTime` caso essa requisição falhe).
+- Popup redesenhado, agora com a capa do drama e botões para abrir a página do drama, visualizar as estatísticas do drama e visualizar as reviews do drama.
+- Adicionada uma aba dedicada no popup para exibir todos os dramas mapeados, substituindo o layout anterior, que era mais desorganizado.
+- Adicionado um botão de **Settings**, com opção para alterar a porcentagem do auto tracking entre **80%, 85% e 90%**.
+- Adicionado um botão **Need Help?**, que redireciona para o README para obter ajuda e informações adicionais.
+- Os mapeamentos agora são removidos automaticamente **1 hora após a conclusão de um drama**.
 
 **v0.1.3**
 
