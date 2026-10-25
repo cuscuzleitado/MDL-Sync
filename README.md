@@ -1,4 +1,4 @@
-# MDL-Sync — v0.1.4
+# MDL-Sync — v0.1.5
 
 **[English](#english) | [Português](#português-brasil)**
 
@@ -19,6 +19,8 @@ A browser extension that automatically tracks your episode progress on **MyDrama
 - On the **final episode** of a drama, the title is automatically marked as **Completed** on MDL when synced. An optional rating picker (MDL's own 1.0–10.0 scale) also appears, available at any time, independent of the sync itself.
 - Any non-final episode explicitly sets the status to **Currently Watching** on MDL, so a title sitting in "Plan to Watch" or "On-Hold" gets moved correctly instead of staying put.
 - Native browser notifications on auto-sync completion — these show up even when the video is in fullscreen (where the on-page badge is hidden).
+- **Resume playback** (on by default, can be turned off in Settings): remembers where you stopped and, when you reopen the episode, offers to continue from there. It works on every supported site except WeTV and iQIYI, and the saved positions stay only in your browser.
+- **Viki extras** (off by default, in Settings): automatically clicks the “Skip Ad” and “Skip Intro” buttons. “Skip ad” asks for an extra browser permission the first time you turn it on, because the ad button lives inside the ad player's frames.
 - Can also track episodes played locally in **VLC** (e.g. files downloaded from Telegram), via VLC's built-in Web Interface — see the VLC section below.
 
 ### Requirements
@@ -51,9 +53,9 @@ If you ever pick the wrong title by mistake, open the extension's popup, find th
 - WeTV
 - iQIYI
 - clubdodorama.com
-- kisskh.co
+- kisskh (kisskh.co, kisskh.mx and kisskh.xyz mirrors)
 - tokusatsus.com (TokuDrive)
-- 123flmsfree.com, ver.123pelicula.com, flixlat.com, play.cuevana19.com (same template/parser, since they share the same URL structure)
+- 123flmsfree.com, ver.123pelicula.com, flixlat.com, play.cuevana19.com, dramasfree.com, solo-latino.com (same template/parser, since they share the same URL structure)
 - **VLC** (local files), via VLC's Web Interface — see below
 
 ### Tracking local files with VLC
@@ -84,7 +86,9 @@ Each site needs two things:
 
 Also add the domain to `host_permissions`.
 
-Nothing else needs to change — the badge, messaging to the background script, title-mapping cache, and MDL sync logic are all shared via `common.js` and `background.js`.
+Nothing else needs to change — the badge, messaging to the background script, title-mapping cache, MDL sync logic, and **resume playback** are all shared via `common.js` and `background.js`. Resume is on automatically for every new site; if a site already remembers your position by itself, add `supportsResume: false,` to its `SITE_PARSER` (like `content/wetv.js` and `content/iqiyi.js` do).
+
+**A new mirror domain of a site that's already supported** (e.g. another kisskh address) doesn't need a new file: just add the domain to `host_permissions` and to the existing site's `matches` in `manifest.json`.
 
 ### License
 
@@ -92,16 +96,18 @@ MIT — see [LICENSE](./LICENSE).
 
 ### Changelog
 
+**v0.1.5**
+- Added **Resume playback**: saves your position (15 seconds before where you stopped) while you watch, and offers to continue when you reopen the episode, right above the "Mark on MDL" button. The saved position isn't overwritten until you watch 1 minute past it, so opening an episode from 0:00 doesn't erase it. Can be turned off in Settings. Not used on WeTV and iQIYI.
+- Added optional **Viki extras** in Settings: automatic "Skip Ad" and "Skip Intro" clicks (both off by default). "Skip ad" requests an extra browser permission only when you turn it on.
+- Added support for **dramasfree.com** and **solo-latino.com** (same template as the other "detail/drama" sites).
+- kisskh is now supported on its **kisskh.co, kisskh.mx and kisskh.xyz** mirrors, sharing the same saved mappings.
+- Removed the "AUTO ACTIVATED" label from the badge.
+
 **v0.1.4**
 - Renamed the extension to **MDL-Sync**.
 - Added a `LICENSE` file (MIT).
 - Added support for **tokusatsus.com (TokuDrive)**. This site uses random per-episode IDs in the URL (no stable identifier), so detection is based entirely on page content: the episode number from `<h1 class="video-title">` (handles both "Episódio 1" and bare "01" formats) and the drama name from the `.playlist-header` heading.
 - Added support for tracking local files played in **VLC**, via VLC's built-in Web Interface (`localhost:8080`). Since VLC has no `<video>` element or per-episode URL, this uses a dedicated polling approach: reads the filename from the `#mediaTitle` element, and progress from VLC's `/requests/status.json` API (with a DOM-based fallback using `#currentTime`/`#totalTime` if that request fails).
-- Redesigned the popup with the drama cover and buttons to open the drama page, view drama statistics, and view drama reviews.
-- Added a dedicated tab in the popup to display all mapped dramas, replacing the previous cluttered layout.
-- Added a **Settings** button with an option to change the auto-tracking threshold between **80%, 85%, and 90%**.
-- Added a **Need Help?** button that redirects to the README for additional help and information.
-- Mappings are now automatically removed **1 hour after a drama is completed**.
 
 **v0.1.3**
 
@@ -157,6 +163,8 @@ Uma extensão de navegador que sincroniza automaticamente seu progresso de epis�
 - No **último episódio** de um drama, o título é marcado automaticamente como **Completed** no MDL assim que sincroniza. Um seletor de nota opcional (na própria escala do MDL, de 1.0 a 10.0) também aparece, disponível a qualquer momento, independente da sincronização em si.
 - Qualquer episódio que não seja o último força o status pra **Currently Watching** no MDL, então um título parado em "Plan to Watch" ou "On-Hold" é movido corretamente em vez de ficar preso lá.
 - Notificações nativas do navegador quando o auto-sync termina — aparecem mesmo com o vídeo em tela cheia (onde o badge da página fica escondido).
+- **Retomar de onde parou** (ligado por padrão, dá pra desligar nas Settings): lembra onde você parou e, quando você reabre o episódio, oferece continuar dali. Funciona em todos os sites suportados, menos WeTV e iQIYI, e os pontos salvos ficam só no seu navegador.
+- **Extras do Viki** (desligados por padrão, nas Settings): clica sozinho nos botões “Skip Ad” e “Skip Intro”. O “Skip ad” pede uma permissão extra do navegador na primeira vez que você liga, porque o botão do anúncio fica dentro dos frames do player de anúncios.
 - Também rastreia episódios assistidos localmente no **VLC** (ex: arquivos baixados do Telegram), através da interface Web nativa do VLC — veja a seção do VLC abaixo.
 
 ### Requisitos
@@ -189,9 +197,9 @@ Se escolher o título errado por engano, abre o popup da extensão, acha a entra
 - WeTV
 - iQIYI
 - clubdodorama.com
-- kisskh.co
+- kisskh (espelhos kisskh.co, kisskh.mx e kisskh.xyz)
 - tokusatsus.com (TokuDrive)
-- 123flmsfree.com, ver.123pelicula.com, flixlat.com, play.cuevana19.com (mesmo template/parser, já que compartilham a mesma estrutura de URL)
+- 123flmsfree.com, ver.123pelicula.com, flixlat.com, play.cuevana19.com, dramasfree.com, solo-latino.com (mesmo template/parser, já que compartilham a mesma estrutura de URL)
 - **VLC** (arquivos locais), via interface Web do VLC — veja abaixo
 
 ### Rastreando arquivos locais com o VLC
@@ -222,7 +230,9 @@ Cada site precisa de 2 coisas:
 
 E adicione o domínio em `host_permissions` também.
 
-Nada mais precisa mudar — o badge, o envio de mensagens pro background, o cache de mapeamento de títulos e a lógica de sync no MDL são todos compartilhados via `common.js` e `background.js`.
+Nada mais precisa mudar — o badge, o envio de mensagens pro background, o cache de mapeamento de títulos, a lógica de sync no MDL e o **retomar de onde parou** são todos compartilhados via `common.js` e `background.js`. O retomar já vem ligado em qualquer site novo; se o site já lembra sozinho onde você parou, coloque `supportsResume: false,` no `SITE_PARSER` dele (como fazem `content/wetv.js` e `content/iqiyi.js`).
+
+**Um domínio espelho de um site que já é suportado** (ex: outro endereço do kisskh) não precisa de arquivo novo: é só adicionar o domínio em `host_permissions` e no `matches` do site que já existe no `manifest.json`.
 
 ### Licença
 
@@ -230,16 +240,18 @@ MIT — veja [LICENSE](./LICENSE).
 
 ### Changelog
 
+**v0.1.5**
+- Adicionado o **Retomar de onde parou**: guarda sua posição (15 segundos antes de onde você parou) enquanto você assiste, e oferece continuar quando você reabre o episódio, logo acima do botão "Mark on MDL". A posição salva não é sobrescrita até você assistir 1 minuto além dela, então abrir um episódio do 0:00 não a apaga. Dá pra desligar nas Settings. Não é usado no WeTV nem no iQIYI.
+- Adicionados **extras do Viki** opcionais nas Settings: cliques automáticos em "Skip Ad" e "Skip Intro" (os dois desligados por padrão). O "Skip ad" só pede a permissão extra do navegador quando você liga.
+- Adicionado suporte pro **dramasfree.com** e pro **solo-latino.com** (mesmo template dos outros sites "detail/drama").
+- O kisskh agora é suportado nos espelhos **kisskh.co, kisskh.mx e kisskh.xyz**, compartilhando os mesmos mapeamentos salvos.
+- Removido o texto "AUTO ACTIVATED" do badge.
+
 **v0.1.4**
 - Extensão renomeada pra **MDL-Sync**.
 - Adicionado arquivo `LICENSE` (MIT).
 - Adicionado suporte pro **tokusatsus.com (TokuDrive)**. Esse site usa IDs aleatórios por episódio na URL (sem identificador estável), então a detecção é baseada inteiramente no conteúdo da página: o número do episódio vem do `<h1 class="video-title">` (cobre tanto "Episódio 1" quanto só "01") e o nome do drama vem do cabeçalho `.playlist-header`.
 - Adicionado suporte pra rastrear arquivos locais tocados no **VLC**, via interface Web nativa do VLC (`localhost:8080`). Como o VLC não tem tag `<video>` nem URL por episódio, isso usa uma abordagem própria de polling: lê o nome do arquivo do elemento `#mediaTitle`, e o progresso da API `/requests/status.json` do VLC (com um plano B via DOM usando `#currentTime`/`#totalTime` caso essa requisição falhe).
-- Popup redesenhado, agora com a capa do drama e botões para abrir a página do drama, visualizar as estatísticas do drama e visualizar as reviews do drama.
-- Adicionada uma aba dedicada no popup para exibir todos os dramas mapeados, substituindo o layout anterior, que era mais desorganizado.
-- Adicionado um botão de **Settings**, com opção para alterar a porcentagem do auto tracking entre **80%, 85% e 90%**.
-- Adicionado um botão **Need Help?**, que redireciona para o README para obter ajuda e informações adicionais.
-- Os mapeamentos agora são removidos automaticamente **1 hora após a conclusão de um drama**.
 
 **v0.1.3**
 

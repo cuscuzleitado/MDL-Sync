@@ -197,3 +197,62 @@ thresholdContainer.addEventListener("change", (event) => {
     flashSaved();
   });
 });
+
+// --- Extras: Skip ad / Skip intro (Viki) e Resume playback ---
+// Padrões: os dois do Viki começam desligados (são opcionais); o resume
+// começa ligado, com o interruptor pra quem não quiser.
+const EXTRA_DEFAULTS = { vikiSkipAd: false, vikiSkipIntro: false, resumeEnabled: true };
+const SKIP_AD_ORIGINS = ["<all_urls>"]; // permissão opcional, pedida só ao ligar o Skip ad
+const extraInputs = document.querySelectorAll("input[data-extra]");
+
+function setExtraToggle(input, on) {
+  input.checked = on;
+  input.closest("label").classList.toggle("active", on);
+}
+
+chrome.storage.local.get(Object.keys(EXTRA_DEFAULTS), async (stored) => {
+  for (const input of extraInputs) {
+    const key = input.dataset.extra;
+    setExtraToggle(input, typeof stored[key] === "boolean" ? stored[key] : EXTRA_DEFAULTS[key]);
+  }
+
+  // Skip ad ligado mas sem a permissão (ex: o pedido foi negado com o popup
+  // já fechado): desliga de volta pra não ficar marcado sem funcionar.
+  if (stored.vikiSkipAd === true) {
+    const hasPermission = await chrome.permissions.contains({ origins: SKIP_AD_ORIGINS });
+    if (!hasPermission) {
+      const input = document.querySelector('input[data-extra="vikiSkipAd"]');
+      setExtraToggle(input, false);
+      chrome.storage.local.set({ vikiSkipAd: false });
+    }
+  }
+});
+
+for (const input of extraInputs) {
+  input.addEventListener("change", () => {
+    const key = input.dataset.extra;
+    const on = input.checked;
+    setExtraToggle(input, on);
+
+    if (key === "vikiSkipAd" && on) {
+      // Salva já (o background registra o script assim que a permissão
+      // existir) e pede a permissão direto no clique, que é quando o
+      // Chrome aceita o pedido.
+      chrome.storage.local.set({ vikiSkipAd: true });
+      chrome.permissions.request({ origins: SKIP_AD_ORIGINS }, (granted) => {
+        if (granted) {
+          flashSaved();
+        } else {
+          setExtraToggle(input, false);
+          chrome.storage.local.set({ vikiSkipAd: false });
+        }
+      });
+      return;
+    }
+
+    chrome.storage.local.set({ [key]: on }, () => {
+      if (key === "vikiSkipAd" && !on) chrome.permissions.remove({ origins: SKIP_AD_ORIGINS });
+      flashSaved();
+    });
+  });
+}

@@ -8,6 +8,8 @@
 //   - ver.123pelicula.com
 //   - flixlat.com
 //   - play.cuevana19.com
+//   - dramasfree.com (www3.dramasfree.com)
+//   - solo-latino.com (latino.solo-latino.com)
 // ============================================================
 
 const SITE_PARSER = {

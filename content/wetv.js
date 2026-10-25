@@ -5,6 +5,10 @@
 const SITE_PARSER = {
   siteName: "wetv",
 
+  // Esses sites já lembram onde você parou por conta própria, então o
+  // "retomar de onde parou" do MDL-Sync fica desligado aqui.
+  supportsResume: false,
+
   // WeTV não expõe temporada na URL, então assumimos sempre 1.
   // O "slug" usa o ID da série (estável entre episódios), não o título,
   // já que o título só aparece formatado dentro da própria página.

@@ -367,3 +367,51 @@ function waitForTabLoad(tabId) {
     chrome.tabs.onUpdated.addListener(listener);
   });
 }
+
+// ============================================================
+// VIKI: SKIP AD (script registrado dinamicamente)
+//
+// O botão "Skip Ad" fica dentro de iframes do player de anúncios, em
+// domínios de terceiros. Pra alcançar esses iframes o script precisa
+// rodar em todos os frames, o que exige a permissão opcional
+// "<all_urls>" — que só é pedida quando o usuário liga "Skip ad" nas
+// Settings. Sem a opção ligada (ou sem a permissão), o script não é
+// registrado e a extensão nunca vê nada fora dos sites suportados.
+// ============================================================
+const VIKI_SKIP_AD_SCRIPT_ID = "mdl-sync-viki-skip-ad";
+
+async function syncVikiSkipAdRegistration() {
+  try {
+    const { vikiSkipAd } = await chrome.storage.local.get("vikiSkipAd");
+    const hasPermission = await chrome.permissions.contains({ origins: ["<all_urls>"] });
+    const registered = await chrome.scripting.getRegisteredContentScripts({ ids: [VIKI_SKIP_AD_SCRIPT_ID] });
+    const shouldRun = vikiSkipAd === true && hasPermission;
+
+    if (shouldRun && registered.length === 0) {
+      await chrome.scripting.registerContentScripts([
+        {
+          id: VIKI_SKIP_AD_SCRIPT_ID,
+          matches: ["<all_urls>"],
+          js: ["content/viki-skip-ad.js"],
+          allFrames: true,
+          // cobre também os frames about:blank/srcdoc/blob:/data: criados por anúncios
+          matchOriginAsFallback: true,
+          runAt: "document_idle",
+          persistAcrossSessions: true
+        }
+      ]);
+    } else if (!shouldRun && registered.length > 0) {
+      await chrome.scripting.unregisterContentScripts({ ids: [VIKI_SKIP_AD_SCRIPT_ID] });
+    }
+  } catch (err) {
+    console.warn("[MDL Sync] Could not update the Skip ad script:", err);
+  }
+}
+
+chrome.runtime.onInstalled.addListener(syncVikiSkipAdRegistration);
+chrome.runtime.onStartup.addListener(syncVikiSkipAdRegistration);
+chrome.permissions.onAdded.addListener(syncVikiSkipAdRegistration);
+chrome.permissions.onRemoved.addListener(syncVikiSkipAdRegistration);
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes.vikiSkipAd) syncVikiSkipAdRegistration();
+});

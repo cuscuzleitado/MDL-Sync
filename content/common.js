@@ -20,11 +20,33 @@ chrome.storage.local.get("syncThreshold", ({ syncThreshold }) => {
 chrome.storage.onChanged.addListener((changes) => {
   if (changes.syncThreshold && typeof changes.syncThreshold.newValue === "number") {
     AUTO_SYNC_THRESHOLD = changes.syncThreshold.newValue;
-    // Se já existe um badge na tela (usuário mudou a opção com o vídeo já
-    // aberto), atualiza o texto na hora em vez de só valer a partir do
-    // próximo episódio.
-    if (window.MDLSyncCommon) window.MDLSyncCommon._updateBadgeAutoLabel();
   }
+});
+
+// ------------------------------------------------------------
+// RETOMAR — configuração (a lógica fica no fim deste arquivo)
+// ------------------------------------------------------------
+let RESUME_ENABLED = true; // interruptor nas Settings ("resumeEnabled")
+const RESUME_STORAGE_KEY = "resumePoints";
+const RESUME_MIN_EPISODE_SECONDS = 180; // mesma regra do auto-sync: ignora vinhetas/anúncios curtos
+const RESUME_REWIND_SECONDS = 15; // o ponto salvo fica 15s antes de onde você parou
+const RESUME_MIN_SAVE_SECONDS = 45; // não grava nos primeiros 45s
+const RESUME_END_MARGIN_SECONDS = 60; // nos últimos 60s o episódio conta como terminado
+const RESUME_PROTECT_SECONDS = 60; // ponto antigo fica protegido até assistir 1 min além dele
+const RESUME_SAVE_INTERVAL_MS = 5000;
+const RESUME_MAX_ENTRIES = 300;
+
+chrome.storage.local.get("resumeEnabled", ({ resumeEnabled }) => {
+  if (typeof resumeEnabled === "boolean") RESUME_ENABLED = resumeEnabled;
+});
+
+chrome.storage.onChanged.addListener((changes) => {
+  if (!changes.resumeEnabled) return;
+  RESUME_ENABLED = changes.resumeEnabled.newValue !== false;
+  const common = window.MDLSyncCommon;
+  if (!common) return;
+  if (!RESUME_ENABLED) common._teardownResume();
+  else if (common._resumeAllowed && common._lastKnownEpisodeData) common._setupResume(common._lastKnownEpisodeData);
 });
 
 // Notas do MDL: 1.0 a 10.0, de 0.5 em 0.5. [valor, rótulo exibido]
@@ -83,6 +105,20 @@ window.MDLSyncCommon = {
 
         this._createSyncBadge(episodeData, { alreadySynced, isFinalEpisode, existingRating });
         chrome.storage.local.set({ lastDetected: episodeData });
+
+        // Retomar de onde parou (ver seção "RETOMAR" no fim deste arquivo).
+        // Qualquer site que use o MDLSyncCommon ganha isso de graça; pra
+        // desligar num site específico, coloque supportsResume: false no
+        // SITE_PARSER dele. O try/catch garante que um bug aqui nunca atrapalhe
+        // o auto-sync.
+        this._resumeAllowed = SITE_PARSER.supportsResume !== false;
+        if (this._resumeAllowed) {
+          try {
+            this._setupResume(episodeData);
+          } catch (err) {
+            console.warn("[MDL Sync] Resume setup failed:", err);
+          }
+        }
 
         // Auto-sync funciona normal pra QUALQUER episódio (inclusive o
         // último) — a nota é só um extra opcional, não trava o sync normal.
@@ -232,7 +268,6 @@ window.MDLSyncCommon = {
       }
 
       console.log(`[MDL Sync] Auto-sync ativo (dispara ao passar de ${AUTO_SYNC_THRESHOLD * 100}%).`);
-      this._updateBadgeAutoLabel();
 
       video.addEventListener("timeupdate", () => {
         if (myGeneration !== this._autoTrackGeneration) return;
@@ -306,26 +341,6 @@ window.MDLSyncCommon = {
     };
 
     attach();
-  },
-
-  // Pequeno indicativo visual no badge de que o auto-sync está ativo
-  // nesse episódio. Atualiza o texto se já existir (ex: quando a % é
-  // trocada nas Settings com o badge já na tela) em vez de ignorar.
-  _updateBadgeAutoLabel() {
-    const badge = document.getElementById("mdl-sync-badge");
-    if (!badge) return;
-
-    const topRow = badge.querySelector(".mdl-sync-top-row") || badge;
-    let autoLabel = badge.querySelector(".mdl-sync-auto-label");
-    if (!autoLabel) {
-      autoLabel = document.createElement("span");
-      autoLabel.className = "mdl-sync-auto-label";
-      autoLabel.style.cssText = "font-size: 11px; color: #4da3ff; margin-left: 4px;";
-      topRow.appendChild(autoLabel);
-    }
-    // Sem emoji, sem % — só o essencial: o auto-tracking está ativo
-    // nesse episódio.
-    autoLabel.textContent = "AUTO ACTIVATED";
   },
 
   // Deixa o botão principal do badge permanentemente no estado
@@ -578,5 +593,236 @@ window.MDLSyncCommon = {
     row.appendChild(select);
     row.appendChild(button);
     return row;
+  },
+
+  // ==========================================================
+  // RETOMAR DE ONDE PAROU
+  //
+  // - Enquanto você assiste, grava o ponto (15s antes de onde está) a cada
+  //   ~5s e ao pausar/fechar a aba. Só vale pro vídeo do episódio (>= 3 min),
+  //   então vinhetas e anúncios nunca entram.
+  // - Ao reabrir o episódio, mostra um aviso em cima do badge: "Continue
+  //   from 14:46?" com Resume / From start.
+  // - O ponto antigo fica PROTEGIDO (não é sobrescrito) até o vídeo passar
+  //   1 min além dele (ex: salvo em 14:46 -> protegido até 15:46). Isso
+  //   impede que abrir o episódio em 0:00 apague o ponto salvo. Quando chega
+  //   lá, o aviso some e a gravação volta ao normal.
+  // - Fica escondido: nada disso aparece no popup da extensão.
+  // ==========================================================
+
+  _resumeKey(episodeData) {
+    return this._syncedStorageKey(episodeData);
+  },
+
+  _readResumePoint(episodeData) {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(RESUME_STORAGE_KEY, (res) => {
+        const map = res[RESUME_STORAGE_KEY] || {};
+        resolve(map[this._resumeKey(episodeData)] || null);
+      });
+    });
+  },
+
+  // point = null apaga o ponto desse episódio.
+  _writeResumePoint(episodeData, point) {
+    chrome.storage.local.get(RESUME_STORAGE_KEY, (res) => {
+      const map = res[RESUME_STORAGE_KEY] || {};
+      const key = this._resumeKey(episodeData);
+      if (point) map[key] = point;
+      else delete map[key];
+
+      // Mantém só os mais recentes, pra não crescer pra sempre.
+      const keys = Object.keys(map);
+      if (keys.length > RESUME_MAX_ENTRIES) {
+        keys.sort((a, b) => (map[a].ts || 0) - (map[b].ts || 0));
+        for (const oldKey of keys.slice(0, keys.length - RESUME_MAX_ENTRIES)) delete map[oldKey];
+      }
+      chrome.storage.local.set({ [RESUME_STORAGE_KEY]: map });
+    });
+  },
+
+  // O <video> do episódio de verdade (ignora clipes curtos). Procura entre
+  // todos, não só o primeiro: em alguns players o anúncio vem antes na página.
+  _findEpisodeVideo() {
+    const videos = Array.from(document.querySelectorAll("video"));
+    return (
+      videos.find((v) => isFinite(v.duration) && v.duration >= RESUME_MIN_EPISODE_SECONDS) || null
+    );
+  },
+
+  _formatTime(totalSeconds) {
+    const t = Math.max(0, Math.floor(totalSeconds));
+    const h = Math.floor(t / 3600);
+    const m = Math.floor((t % 3600) / 60);
+    const s = t % 60;
+    const mm = h > 0 ? String(m).padStart(2, "0") : String(m);
+    return `${h > 0 ? h + ":" : ""}${mm}:${String(s).padStart(2, "0")}`;
+  },
+
+  _removeResumePrompt() {
+    document.querySelectorAll(".mdl-sync-resume-row").forEach((el) => el.remove());
+  },
+
+  _teardownResume() {
+    const state = this._resumeState;
+    if (state && state.cleanup) state.cleanup.forEach((fn) => fn());
+    this._resumeState = null;
+    this._removeResumePrompt();
+  },
+
+  _setupResume(episodeData) {
+    this._teardownResume(); // cancela o episódio anterior (troca de episódio sem recarregar)
+    if (!RESUME_ENABLED) return;
+
+    const state = { protectUntil: null, lastSave: 0, cleared: false, cleanup: [] };
+    this._resumeState = state;
+
+    // Espera o <video> do episódio aparecer (até ~2 min, por causa de anúncios).
+    let attempts = 0;
+    const find = async () => {
+      if (this._resumeState !== state) return;
+      const video = this._findEpisodeVideo();
+      if (!video) {
+        if (++attempts < 120) setTimeout(find, 1000);
+        return;
+      }
+      const point = await this._readResumePoint(episodeData);
+      if (this._resumeState !== state) return;
+      this._startResume(episodeData, state, video, point);
+    };
+    find();
+  },
+
+  _startResume(episodeData, state, video, point) {
+    const saved =
+      point && typeof point.t === "number" && point.t > 0 && point.t < video.duration - RESUME_END_MARGIN_SECONDS
+        ? point
+        : null;
+
+    if (saved) {
+      state.protectUntil = saved.t + RESUME_PROTECT_SECONDS;
+      // Se o próprio site já retomou perto do ponto (ex: Viki sem adblock),
+      // não pergunta de novo — só mantém o ponto protegido.
+      if (video.currentTime < saved.t - 10) this._showResumePrompt(episodeData, state, saved);
+    }
+
+    const guard = (fn) => (...args) => {
+      try {
+        fn(...args);
+      } catch (err) {
+        console.warn("[MDL Sync] Resume error:", err);
+      }
+    };
+    const onTime = guard((e) => this._onResumeTick(episodeData, state, e.target, false));
+    const onPause = guard((e) => this._onResumeTick(episodeData, state, e.target, true));
+    const onFlush = guard(() => this._onResumeTick(episodeData, state, this._findEpisodeVideo(), true));
+    const onHide = guard(() => {
+      if (document.visibilityState === "hidden") onFlush();
+    });
+
+    // Eventos de mídia não "borbulham", mas dá pra ouvir na fase de captura
+    // no document — assim continua funcionando se o site trocar a tag <video>.
+    document.addEventListener("timeupdate", onTime, true);
+    document.addEventListener("pause", onPause, true);
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", onFlush);
+    state.cleanup.push(
+      () => document.removeEventListener("timeupdate", onTime, true),
+      () => document.removeEventListener("pause", onPause, true),
+      () => document.removeEventListener("visibilitychange", onHide),
+      () => window.removeEventListener("pagehide", onFlush)
+    );
+  },
+
+  _onResumeTick(episodeData, state, v, force) {
+    if (this._resumeState !== state || !RESUME_ENABLED) return;
+    if (!(v instanceof HTMLVideoElement)) return;
+    if (!isFinite(v.duration) || v.duration < RESUME_MIN_EPISODE_SECONDS) return;
+
+    const ct = v.currentTime;
+
+    // Ponto antigo ainda protegido: não grava nada até passar 1 min além dele.
+    if (state.protectUntil !== null) {
+      if (ct < state.protectUntil) return;
+      state.protectUntil = null;
+      this._removeResumePrompt();
+    }
+
+    const now = Date.now();
+    if (!force && now - state.lastSave < RESUME_SAVE_INTERVAL_MS) return;
+    state.lastSave = now;
+
+    // Reta final: o episódio conta como terminado, então não precisa retomar.
+    if (v.duration - ct <= RESUME_END_MARGIN_SECONDS) {
+      if (!state.cleared) {
+        state.cleared = true;
+        this._writeResumePoint(episodeData, null);
+      }
+      return;
+    }
+    state.cleared = false;
+
+    if (ct < RESUME_MIN_SAVE_SECONDS) return;
+    this._writeResumePoint(episodeData, {
+      t: Math.floor(ct - RESUME_REWIND_SECONDS),
+      d: Math.floor(v.duration),
+      ts: now
+    });
+  },
+
+  // Pula pro ponto salvo e confere nos próximos segundos se o player não
+  // "desfez" o salto (alguns players voltam pro início ao terminar de carregar).
+  _seekTo(state, seconds) {
+    let tries = 0;
+    const attempt = () => {
+      if (this._resumeState !== state) return;
+      const v = this._findEpisodeVideo();
+      if (v && v.currentTime < seconds - 5) v.currentTime = seconds;
+      if (++tries < 4) setTimeout(attempt, 1200);
+    };
+    attempt();
+  },
+
+  _showResumePrompt(episodeData, state, saved) {
+    const badge = document.getElementById("mdl-sync-badge");
+    if (!badge || badge.querySelector(".mdl-sync-resume-row")) return;
+
+    const row = document.createElement("div");
+    row.className = "mdl-sync-resume-row";
+    row.style.cssText =
+      "display: flex; align-items: center; gap: 6px; border-bottom: 1px solid #333; padding-bottom: 8px;";
+
+    const label = document.createElement("span");
+    label.textContent = `Continue from ${this._formatTime(saved.t)}?`;
+    label.style.cssText = "font-size: 12px; flex: 1;";
+
+    const resumeBtn = document.createElement("button");
+    resumeBtn.textContent = "Resume";
+    resumeBtn.style.cssText = `
+      background: #4da3ff; color: #fff; border: none; padding: 6px 10px;
+      border-radius: 6px; cursor: pointer; font-size: 12px;
+    `;
+    resumeBtn.onclick = () => {
+      this._seekTo(state, saved.t);
+      row.remove();
+    };
+
+    const startBtn = document.createElement("button");
+    startBtn.textContent = "From start";
+    startBtn.style.cssText = `
+      background: #2c2c2e; color: #ccc; border: 1px solid #444; padding: 5px 9px;
+      border-radius: 6px; cursor: pointer; font-size: 12px;
+    `;
+    startBtn.onclick = () => {
+      // Descarta o ponto antigo e volta a gravar já.
+      state.protectUntil = null;
+      this._writeResumePoint(episodeData, null);
+      row.remove();
+    };
+
+    row.appendChild(label);
+    row.appendChild(resumeBtn);
+    row.appendChild(startBtn);
+    badge.insertBefore(row, badge.firstChild);
   }
 };

@@ -1,5 +1,12 @@
 // ============================================================
-// PARSER: kisskh.co
+// PARSER: kisskh (kisskh.co, kisskh.mx, kisskh.xyz)
+// ============================================================
+// Os domínios são espelhos do mesmo site (mesma estrutura de URL e mesmo
+// "id" de série), por isso o siteName é fixo "kisskh" — o mapeamento e o
+// ponto de retomar são compartilhados entre eles.
+//
+// Pra adicionar outro espelho, NÃO mexa neste arquivo: no manifest.json,
+// adicione o domínio em "host_permissions" e em "matches" do kisskh.
 // ============================================================
 
 const SITE_PARSER = {

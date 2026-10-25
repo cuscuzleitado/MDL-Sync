@@ -131,6 +131,19 @@
       <label data-value="0.9"><input type="radio" name="threshold" value="0.9" /><span>90%</span></label>
     </div>
     <p class="hint">Episode is marked as watched once playback passes this point.</p>
+    <h2>Viki only</h2>
+    <div class="threshold-options">
+      <label><input type="checkbox" data-extra="vikiSkipAd" /><span>Skip ad</span></label>
+      <label><input type="checkbox" data-extra="vikiSkipIntro" /><span>Skip intro</span></label>
+    </div>
+    <p class="hint">Automatically clicks the “Skip Ad” and “Skip Intro” buttons when they show up. Skip ad asks for an extra browser permission the first time you turn it on.</p>
+
+    <h2>Resume playback</h2>
+    <div class="threshold-options">
+      <label><input type="checkbox" data-extra="resumeEnabled" /><span>Remember where I stopped</span></label>
+    </div>
+    <p class="hint">When you reopen an episode, offers to continue from where you left off. Not used on WeTV and iQIYI.</p>
+
     <div id="savedNote">Saved ✓</div>
 
     <a class="help-button" href="https://github.com/cuscuzleitado/MDL-Sync/blob/main/README.md"

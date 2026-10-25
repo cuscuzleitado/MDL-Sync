@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MDL-Sync",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Sincroniza automaticamente o progresso de episódios no MyDramaList enquanto você assiste.",
   "permissions": ["storage", "tabs", "scripting", "notifications", "alarms"],
   "host_permissions": [
@@ -10,14 +10,19 @@
     "https://www.viki.com/*",
     "https://wetv.vip/*",
     "https://kisskh.co/*",
+    "https://kisskh.mx/*",
+    "https://kisskh.xyz/*",
     "https://www.iq.com/*",
     "https://*.123flmsfree.com/*",
     "https://ver.123pelicula.com/*",
     "https://flixlat.com/*",
     "https://play.cuevana19.com/*",
+    "https://*.dramasfree.com/*",
+    "https://*.solo-latino.com/*",
     "https://tokusatsus.com/*",
     "http://localhost:8080/*"
   ],
+  "optional_host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
   },
@@ -28,8 +33,15 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://www.viki.com/videos/*"],
+      "matches": ["https://www.viki.com/*"],
       "js": ["content/common.js", "content/viki.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.viki.com/*"],
+      "js": ["content/viki-skip-intro.js"],
+      "all_frames": true,
+      "match_about_blank": true,
       "run_at": "document_idle"
     },
     {
@@ -38,7 +50,11 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://kisskh.co/Drama/*"],
+      "matches": [
+        "https://kisskh.co/Drama/*",
+        "https://kisskh.mx/Drama/*",
+        "https://kisskh.xyz/Drama/*"
+      ],
       "js": ["content/common.js", "content/kisskh.js"],
       "run_at": "document_idle"
     },
@@ -52,7 +68,9 @@
         "https://*.123flmsfree.com/*/detail/drama/*",
         "https://ver.123pelicula.com/*/detail/drama/*",
         "https://flixlat.com/*/detail/drama/*",
-        "https://play.cuevana19.com/*/detail/drama/*"
+        "https://play.cuevana19.com/*/detail/drama/*",
+        "https://*.dramasfree.com/*/detail/drama/*",
+        "https://*.solo-latino.com/*/detail/drama/*"
       ],
       "js": ["content/common.js", "content/detail-drama-template.js"],
       "run_at": "document_idle"

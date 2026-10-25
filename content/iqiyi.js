@@ -5,6 +5,10 @@
 const SITE_PARSER = {
   siteName: "iqiyi",
 
+  // Esses sites já lembram onde você parou por conta própria, então o
+  // "retomar de onde parou" do MDL-Sync fica desligado aqui.
+  supportsResume: false,
+
   // A página do episódio sempre tem um link visível pro álbum (a página
   // do drama), e esse link é a fonte mais confiável tanto pro nome quanto
   // pra uma chave estável — o <title> da aba vem cheio de texto de SEO.
