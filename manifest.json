@@ -20,7 +20,9 @@
     "https://*.dramasfree.com/*",
     "https://*.solo-latino.com/*",
     "https://tokusatsus.com/*",
-    "http://localhost:8080/*"
+    "http://localhost:8080/*",
+    "https://es.cuevana4br.com/*",
+    "https://video.playspelis.com/*"
   ],
   "optional_host_permissions": ["<all_urls>"],
   "background": {
