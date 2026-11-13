@@ -72,7 +72,9 @@
         "https://flixlat.com/*/detail/drama/*",
         "https://play.cuevana19.com/*/detail/drama/*",
         "https://*.dramasfree.com/*/detail/drama/*",
-        "https://*.solo-latino.com/*/detail/drama/*"
+        "https://*.solo-latino.com/*/detail/drama/*",
+        "https://es.cuevana4br.com/*/detail/drama*",
+        "https://video.playspelis.com/*/detail/drama/*",
       ],
       "js": ["content/common.js", "content/detail-drama-template.js"],
       "run_at": "document_idle"
