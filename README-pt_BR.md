@@ -1,3 +1,5 @@
+# MDL-Sync — v0.1.6
+
 Uma extensão de navegador que sincroniza automaticamente seu progresso de episódios no **MyDramaList** enquanto você assiste doramas em sites de streaming suportados (ou localmente, via VLC Web).
 
 ⚠️ Isso é um projeto pessoal em estágio inicial. Não tem nenhuma ligação oficial com o MyDramaList nem com nenhum site de streaming. Esperem bugs, e sintam-se à vontade pra abrir uma issue se encontrar algum.
