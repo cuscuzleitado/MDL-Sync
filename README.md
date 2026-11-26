@@ -1,6 +1,6 @@
 # MDL-Sync — v0.1.6
 
-**English** | [Português (Brasil)](README-pt_BR.md) | [Español](README-es.md)
+Readme in [Português (Brasil)](README-pt_BR.md) | [Español](README-es.md)
 
 A browser extension that automatically tracks your episode progress on **MyDramaList** while you watch dramas on supported streaming sites (or locally, via VLC Web).
 
