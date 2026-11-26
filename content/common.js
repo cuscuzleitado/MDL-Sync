@@ -49,18 +49,116 @@ chrome.storage.onChanged.addListener((changes) => {
   else if (common._resumeAllowed && common._lastKnownEpisodeData) common._setupResume(common._lastKnownEpisodeData);
 });
 
-// Notas do MDL: 1.0 a 10.0, de 0.5 em 0.5. [valor, rótulo exibido]
-const RATING_OPTIONS = [
-  ["10", "10"], ["9.5", "9.5"], ["9", "9.0"], ["8.5", "8.5"], ["8", "8.0"],
-  ["7.5", "7.5"], ["7", "7.0"], ["6.5", "6.5"], ["6", "6.0"], ["5.5", "5.5"],
-  ["5", "5.0"], ["4.5", "4.5"], ["4", "4.0"], ["3.5", "3.5"], ["3", "3.0"],
-  ["2.5", "2.5"], ["2", "2.0"], ["1.5", "1.5"], ["1", "1.0"]
-];
+// ------------------------------------------------------------
+// DISCORD PRESENCE — configuração (a lógica fica no fim deste arquivo)
+// Vale pra todos os sites; o liga/desliga por site fica nas Settings
+// (Discord presence) e é aplicado no background.js.
+// ------------------------------------------------------------
+let PRESENCE_ENABLED = true; // interruptor nas Settings ("presenceEnabled")
+const PRESENCE_HEARTBEAT_MS = 5000; // avisa o app a cada 5s (também quando pausado, pra ele saber que ainda está aí)
+
+chrome.storage.local.get("presenceEnabled", ({ presenceEnabled }) => {
+  if (typeof presenceEnabled === "boolean") PRESENCE_ENABLED = presenceEnabled;
+});
+
+chrome.storage.onChanged.addListener((changes) => {
+  if (!changes.presenceEnabled) return;
+  PRESENCE_ENABLED = changes.presenceEnabled.newValue !== false;
+  const common = window.MDLSyncCommon;
+  if (!common) return;
+  if (!PRESENCE_ENABLED) common._teardownPresence(true);
+  else if (common._lastKnownEpisodeData) common._setupPresence(common._lastKnownEpisodeData);
+});
+
+// ------------------------------------------------------------
+// PULADOR COM TECLA DE ATALHO (Settings > More)
+// Ao apertar a tecla escolhida, avança o vídeo do episódio N segundos.
+// ------------------------------------------------------------
+let QUICK_SKIP = null; // { seconds, key: { code, ctrl, alt, shift } | null }
+
+chrome.storage.local.get("quickSkip", ({ quickSkip }) => {
+  QUICK_SKIP = quickSkip || null;
+});
+
+document.addEventListener(
+  "keydown",
+  (e) => {
+    const q = QUICK_SKIP;
+    if (!q || !q.key || !q.seconds) return;
+    const common = window.MDLSyncCommon;
+    if (!common || common._excluded) return;
+    if (e.code !== q.key.code || e.ctrlKey !== Boolean(q.key.ctrl) || e.altKey !== Boolean(q.key.alt) || e.shiftKey !== Boolean(q.key.shift) || e.metaKey) return;
+
+    const t = e.target;
+    if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return; // digitando
+
+    const video = common._findEpisodeVideo();
+    if (!video) {
+      // Nada pra pular: deixa a tecla funcionar normalmente na página.
+      console.log("[MDL Sync] Quick skip: tecla reconhecida, mas não achei o vídeo do episódio nesta página.");
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+    video.currentTime = Math.min(video.currentTime + q.seconds, Math.max(0, video.duration - 0.5));
+    common._toast(`+${q.seconds}s`);
+    console.log(`[MDL Sync] Quick skip: +${q.seconds}s`);
+  },
+  true
+);
+
+chrome.storage.onChanged.addListener((changes) => {
+  const common = window.MDLSyncCommon;
+  if (!common) return;
+
+  if (changes.quickSkip) QUICK_SKIP = changes.quickSkip.newValue || null;
+
+  // Site excluído com a página aberta: para o que dá pra parar na hora
+  // (o resto some ao recarregar a página).
+  if (changes.excludedSites && common._siteInfo) {
+    const excluded = Boolean((changes.excludedSites.newValue || {})[common._siteInfo.id]);
+    common._excluded = excluded;
+    if (excluded) {
+      common._teardownPresence(true);
+      common._teardownSkipOp();
+    }
+  }
+
+  // Regra de "skip op" mudou: aplica na hora no episódio que está aberto.
+  if (changes.skipOpMap && common._lastKnownEpisodeData && !common._excluded) {
+    common._setupSkipOp(common._lastKnownEpisodeData);
+  }
+});
 
 window.MDLSyncCommon = {
   init(SITE_PARSER) {
-    this._attemptDetection(SITE_PARSER);
-    this._watchUrlChanges(SITE_PARSER);
+    const info = mdlSiteInfo(SITE_PARSER.siteName);
+    this._siteInfo = info;
+    this._registerSeenSite(info);
+
+    // Site excluído nas Settings (More > Excluded sites): não faz nada nele.
+    chrome.storage.local.get("excludedSites", ({ excludedSites }) => {
+      this._excluded = Boolean((excludedSites || {})[info.id]);
+      if (this._excluded) {
+        console.log("[MDL Sync] Site excluído nas Settings — extensão desligada aqui.");
+        return;
+      }
+      this._attemptDetection(SITE_PARSER);
+      this._watchUrlChanges(SITE_PARSER);
+    });
+  },
+
+  // Sites que ainda não estão no registro (sites.js) entram nas listas do
+  // popup assim que são visitados pela primeira vez.
+  _registerSeenSite(info) {
+    if (!info.dynamic || !info.id) return;
+    chrome.storage.local.get("seenSites", ({ seenSites }) => {
+      const seen = seenSites || {};
+      if (seen[info.id]) return;
+      seen[info.id] = info.name;
+      chrome.storage.local.set({ seenSites: seen });
+    });
   },
 
   // Tenta detectar por alguns segundos, caso o site seja uma SPA
@@ -118,6 +216,19 @@ window.MDLSyncCommon = {
           } catch (err) {
             console.warn("[MDL Sync] Resume setup failed:", err);
           }
+        }
+
+        // Discord presence (ver seção "DISCORD PRESENCE" no fim deste arquivo).
+        // O try/catch garante que um bug aqui nunca atrapalhe o auto-sync.
+        try {
+          this._setupPresence(episodeData);
+        } catch (err) {
+          console.warn("[MDL Sync] Presence setup failed:", err);
+        }
+        try {
+          this._setupSkipOp(episodeData);
+        } catch (err) {
+          console.warn("[MDL Sync] Skip op setup failed:", err);
         }
 
         // Auto-sync funciona normal pra QUALQUER episódio (inclusive o
@@ -520,7 +631,7 @@ window.MDLSyncCommon = {
   _buildRatingRow(data, existingRating) {
     const row = document.createElement("div");
     row.className = "mdl-sync-rating-row";
-    row.style.cssText = "display: flex; align-items: center; gap: 6px; border-top: 1px solid #333; padding-top: 8px;";
+    row.style.cssText = "display: flex; align-items: center; flex-wrap: wrap; gap: 6px; border-top: 1px solid #333; padding-top: 8px;";
 
     if (existingRating) {
       const doneLabel = document.createElement("span");
@@ -535,23 +646,7 @@ window.MDLSyncCommon = {
     hint.style.cssText = "font-size: 11px; color: #999;";
     row.appendChild(hint);
 
-    const select = document.createElement("select");
-    select.style.cssText = `
-      background: #2c2c2e; color: #fff; border: 1px solid #444;
-      border-radius: 6px; font-size: 12px; padding: 4px;
-    `;
-
-    const placeholder = document.createElement("option");
-    placeholder.value = "0";
-    placeholder.textContent = "Rate...";
-    select.appendChild(placeholder);
-
-    for (const [value, labelText] of RATING_OPTIONS) {
-      const option = document.createElement("option");
-      option.value = value;
-      option.textContent = labelText;
-      select.appendChild(option);
-    }
+    const picker = this._buildStarPicker();
 
     const button = document.createElement("button");
     button.textContent = "Complete";
@@ -561,15 +656,15 @@ window.MDLSyncCommon = {
     `;
 
     button.onclick = () => {
-      const rating = select.value;
-      if (!rating || rating === "0") {
+      const rating = picker.getValue();
+      if (!rating) {
         button.textContent = "Pick a rating first";
         setTimeout(() => (button.textContent = "Complete"), 1800);
         return;
       }
 
       button.disabled = true;
-      select.disabled = true;
+      picker.setDisabled(true);
       button.textContent = "Sending...";
 
       this._sendSyncMessage({ type: "SYNC_EPISODE", data: { ...data, rating } }, (response) => {
@@ -584,15 +679,173 @@ window.MDLSyncCommon = {
           button.textContent = "Failed ✗ (see console)";
           button.style.background = "#e74c3c";
           button.disabled = false;
-          select.disabled = false;
+          picker.setDisabled(false);
           console.warn("[MDL Sync] Falha ao completar:", response?.error);
         }
       });
     };
 
-    row.appendChild(select);
+    row.appendChild(picker.el);
     row.appendChild(button);
     return row;
+  },
+
+  // Nota em 5 estrelas, como no MDL: passe o mouse pelas estrelas e clique.
+  // Cada estrela vale 2 pontos e o mouse varia de 0.5 em 0.5 ponto (1.0 a
+  // 10.0, a mesma escala do MDL). O número ao lado mostra a nota exata que
+  // será enviada. Devolve o valor como texto ("9", "9.5", "10"...), igual
+  // ao que o seletor antigo enviava.
+  _buildStarPicker() {
+    const STAR = 22;
+    const GAP = 2;
+
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "display: flex; align-items: center; gap: 8px;";
+
+    const stars = document.createElement("div");
+    stars.style.cssText = `display: flex; gap: ${GAP}px; cursor: pointer;`;
+
+    const fills = [];
+    for (let i = 0; i < 5; i++) {
+      const box = document.createElement("div");
+      box.style.cssText = `position: relative; width: ${STAR}px; height: ${STAR}px; font-size: ${STAR}px; line-height: ${STAR}px;`;
+
+      const base = document.createElement("span");
+      base.textContent = "★";
+      base.style.cssText = "position: absolute; left: 0; top: 0; color: #444;";
+
+      const clip = document.createElement("div");
+      clip.style.cssText = "position: absolute; left: 0; top: 0; height: 100%; width: 0; overflow: hidden;";
+      const gold = document.createElement("span");
+      gold.textContent = "★";
+      gold.style.cssText = `display: block; width: ${STAR}px; color: #f5b301;`;
+      clip.appendChild(gold);
+
+      box.appendChild(base);
+      box.appendChild(clip);
+      stars.appendChild(box);
+      fills.push(clip);
+    }
+
+    const label = document.createElement("span");
+    label.style.cssText = "font-size: 12px; color: #ccc; min-width: 26px;";
+    label.textContent = "–";
+
+    let selected = 0;
+    let disabled = false;
+
+    const paint = (score) => {
+      fills.forEach((clip, i) => {
+        const part = Math.max(0, Math.min(1, (score - i * 2) / 2));
+        clip.style.width = `${part * STAR}px`;
+      });
+      label.textContent = score ? score.toFixed(1) : "–";
+    };
+
+    const scoreAt = (clientX) => {
+      const rect = stars.getBoundingClientRect();
+      const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
+      const index = Math.min(4, Math.floor(x / (STAR + GAP)));
+      const within = Math.max(0, Math.min(1, (x - index * (STAR + GAP)) / STAR));
+      const points = index * 2 + within * 2;
+      return Math.max(1, Math.ceil(points * 2) / 2);
+    };
+
+    stars.addEventListener("mousemove", (e) => {
+      if (!disabled) paint(scoreAt(e.clientX));
+    });
+    stars.addEventListener("mouseleave", () => paint(selected));
+    stars.addEventListener("click", (e) => {
+      if (disabled) return;
+      selected = scoreAt(e.clientX);
+      paint(selected);
+    });
+
+    wrap.appendChild(stars);
+    wrap.appendChild(label);
+
+    return {
+      el: wrap,
+      getValue: () => (selected ? String(selected) : null),
+      setDisabled: (value) => {
+        disabled = value;
+        stars.style.cursor = value ? "default" : "pointer";
+        stars.style.opacity = value ? "0.6" : "1";
+      }
+    };
+  },
+
+  // Aviso rápido no canto da tela (ex: "+85s" do pulador).
+  _toast(text) {
+    let el = document.getElementById("mdl-sync-toast");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "mdl-sync-toast";
+      el.style.cssText = `
+        position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%);
+        background: rgba(28, 28, 30, 0.92); color: #fff; font: 600 14px sans-serif;
+        padding: 8px 14px; border-radius: 8px; z-index: 2147483647;
+        pointer-events: none; transition: opacity 0.2s;
+      `;
+    }
+    // Em tela cheia só aparece o que está dentro do elemento em fullscreen.
+    (document.fullscreenElement || document.body).appendChild(el);
+    el.textContent = text;
+    el.style.opacity = "1";
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => {
+      el.style.opacity = "0";
+    }, 1200);
+  },
+
+  // ==========================================================
+  // SKIP OP (por título mapeado — botão "skip op" em Mapped Titles)
+  //
+  // Regra salva em skipOpMap[key] = { from, to } (segundos). Quando o
+  // episódio abre e o vídeo chega em "from", pula pra "to". Vale uma vez por
+  // abertura do episódio (se você voltar pra rever a abertura, não pula de
+  // novo) e só se o vídeo ainda não passou de "to" (ex: retomou depois).
+  // ==========================================================
+  _teardownSkipOp() {
+    const state = this._skipOpState;
+    if (state && state.cleanup) state.cleanup.forEach((fn) => fn());
+    this._skipOpState = null;
+  },
+
+  _setupSkipOp(episodeData) {
+    this._teardownSkipOp();
+    if (this._excluded) return;
+
+    chrome.storage.local.get("skipOpMap", ({ skipOpMap }) => {
+      const rule = (skipOpMap || {})[episodeData.key];
+      if (!rule || !(rule.to > rule.from)) return;
+      if (this._lastKnownEpisodeData && this._lastKnownEpisodeData.key !== episodeData.key) return; // trocou de episódio nesse meio tempo
+
+      this._teardownSkipOp();
+      const state = { cleanup: [], armed: true };
+      this._skipOpState = state;
+
+      const onTime = (e) => {
+        try {
+          const v = e.target;
+          if (!state.armed || this._excluded || this._skipOpState !== state) return;
+          if (!(v instanceof HTMLVideoElement) || !isFinite(v.duration) || v.duration < RESUME_MIN_EPISODE_SECONDS) return;
+
+          if (v.currentTime >= rule.to) {
+            state.armed = false; // já está depois da abertura
+          } else if (v.currentTime >= rule.from) {
+            state.armed = false;
+            v.currentTime = rule.to;
+            this._toast("Opening skipped");
+          }
+        } catch (err) {
+          console.warn("[MDL Sync] Skip op error:", err);
+        }
+      };
+
+      document.addEventListener("timeupdate", onTime, true);
+      state.cleanup.push(() => document.removeEventListener("timeupdate", onTime, true));
+    });
   },
 
   // ==========================================================
@@ -824,5 +1077,89 @@ window.MDLSyncCommon = {
     row.appendChild(resumeBtn);
     row.appendChild(startBtn);
     badge.insertBefore(row, badge.firstChild);
+  },
+
+  // ==========================================================
+  // DISCORD PRESENCE
+  //
+  // Enquanto o episódio toca, manda pro background (a cada ~5s e em
+  // play/pause/seek) o drama, o episódio e a posição do vídeo. O background
+  // junta com a capa/total do MDL (mdlMap) e entrega pro app local, que
+  // mostra no Discord como "Watching" com a barra de progresso.
+  // Só vale pro vídeo do episódio (>= 3 min), então vinhetas e anúncios
+  // nunca aparecem. Falhas aqui são sempre silenciosas.
+  // ==========================================================
+
+  _sendPresence(message) {
+    try {
+      chrome.runtime.sendMessage(message, () => void chrome.runtime.lastError);
+    } catch {
+      // contexto da extensão invalidado (ex: extensão recarregada) — ignora.
+    }
+  },
+
+  // sendClear = true avisa o app pra limpar a atividade (ex: interruptor desligado).
+  _teardownPresence(sendClear) {
+    const state = this._presenceState;
+    if (state && state.cleanup) state.cleanup.forEach((fn) => fn());
+    this._presenceState = null;
+    if (sendClear && state) this._sendPresence({ type: "PRESENCE_CLEAR" });
+  },
+
+  _setupPresence(episodeData) {
+    this._teardownPresence(false); // troca de episódio sem recarregar: o novo update substitui o antigo
+    if (!PRESENCE_ENABLED || this._excluded) return;
+
+    const state = { cleanup: [] };
+    this._presenceState = state;
+
+    const send = (v) => {
+      if (this._presenceState !== state) return;
+      if (!(v instanceof HTMLVideoElement)) return;
+      if (!isFinite(v.duration) || v.duration < RESUME_MIN_EPISODE_SECONDS) return;
+
+      this._sendPresence({
+        type: "PRESENCE_UPDATE",
+        data: {
+          key: episodeData.key,
+          site: episodeData.site,
+          title: episodeData.title,
+          season: episodeData.season,
+          episode: episodeData.episode,
+          currentTime: v.currentTime,
+          duration: v.duration,
+          rate: v.playbackRate || 1,
+          paused: v.paused
+        }
+      });
+    };
+
+    const guard = (fn) => (...args) => {
+      try {
+        fn(...args);
+      } catch (err) {
+        console.warn("[MDL Sync] Presence error:", err);
+      }
+    };
+
+    const onMediaEvent = guard((e) => send(e.target));
+    const onBeat = guard(() => send(this._findEpisodeVideo()));
+    const onLeave = guard(() => this._sendPresence({ type: "PRESENCE_CLEAR" }));
+
+    // Eventos de mídia não "borbulham", mas dá pra ouvir na fase de captura
+    // no document — assim continua funcionando se o site trocar a tag <video>.
+    const mediaEvents = ["play", "pause", "seeked"];
+    for (const name of mediaEvents) document.addEventListener(name, onMediaEvent, true);
+    window.addEventListener("pagehide", onLeave);
+
+    const timer = setInterval(onBeat, PRESENCE_HEARTBEAT_MS);
+    const firstBeat = setTimeout(onBeat, 1500);
+
+    state.cleanup.push(
+      () => mediaEvents.forEach((name) => document.removeEventListener(name, onMediaEvent, true)),
+      () => window.removeEventListener("pagehide", onLeave),
+      () => clearInterval(timer),
+      () => clearTimeout(firstBeat)
+    );
   }
 };

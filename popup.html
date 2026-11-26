@@ -6,11 +6,12 @@
     body { width: 300px; font-family: sans-serif; padding: 12px; background: #1c1c1e; color: #fff; }
     .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
     h1 { font-size: 14px; margin: 0; }
-    #settingsBtn, #backBtn, #mappedBackBtn {
+    .header-btn {
       background: #2c2c2e; color: #ccc; border: 1px solid #444;
       border-radius: 6px; padding: 4px 9px; font-size: 12px; cursor: pointer;
     }
-    #settingsBtn:hover, #backBtn:hover, #mappedBackBtn:hover { background: #3a3a3c; color: #fff; }
+    .header-btn:hover { background: #3a3a3c; color: #fff; }
+    .header-btns { display: flex; gap: 6px; }
     h2 { font-size: 12px; margin: 14px 0 6px; color: #aaa; text-transform: uppercase; }
     .item { font-size: 13px; background: #2c2c2e; padding: 8px 10px; border-radius: 8px;
       height: 100%; box-sizing: border-box; display: flex; flex-direction: column;
@@ -52,8 +53,14 @@
     .mapped-btn .count { color: #4da3ff; }
     .map-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px;
       background: #2c2c2e; padding: 6px 8px; border-radius: 6px; margin-bottom: 4px; }
-    .map-row a { color: #4da3ff; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 190px; }
+    .map-info { min-width: 0; flex: 1; margin-right: 6px; }
+    .map-row a { color: #4da3ff; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+    .map-sub { font-size: 10px; color: #999; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .map-actions { display: flex; gap: 4px; flex-shrink: 0; }
     .map-row button { background: #e74c3c; border: none; color: #fff; border-radius: 4px; padding: 3px 6px; cursor: pointer; font-size: 11px; }
+    .map-row button.skip-btn { background: #3a3a3c; color: #ccc; border: 1px solid #555; }
+    .map-row button.skip-btn:hover { background: #4a4a4c; color: #fff; }
+    .map-row button.skip-btn.on { background: #2ecc71; border-color: #2ecc71; color: #fff; }
     .empty { font-size: 12px; color: #999; }
     .hidden { display: none; }
 
@@ -72,8 +79,47 @@
       padding: 9px 0; border-radius: 8px; margin-top: 14px;
     }
     .help-button:hover { background: #c2185b; }
-    #savedNote { font-size: 11px; color: #2ecc71; height: 14px; margin-top: 8px; opacity: 0; transition: opacity .2s; }
-    #savedNote.show { opacity: 1; }
+    .discord-status { font-size: 12px; color: #ccc; background: #2c2c2e; padding: 8px 10px; border-radius: 8px; margin-bottom: 6px; }
+    .small-btn {
+      background: #2c2c2e; color: #ccc; border: 1px solid #444; border-radius: 6px;
+      padding: 6px 10px; font-size: 12px; cursor: pointer;
+    }
+    .small-btn:hover { background: #3a3a3c; color: #fff; }
+    .small-btn.primary { background: #5865f2; border-color: #5865f2; color: #fff; font-weight: 600; }
+    .small-btn.primary:hover { background: #4752c4; }
+    .field { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: #999; margin-top: 10px; }
+    .field input, .field select {
+      background: #2c2c2e; color: #fff; border: 1px solid #444; border-radius: 6px;
+      padding: 6px 8px; font-size: 12px; box-sizing: border-box; width: 100%;
+    }
+    .saved-note { font-size: 11px; color: #2ecc71; height: 14px; margin-top: 8px; opacity: 0; transition: opacity .2s; }
+    .saved-note.show { opacity: 1; }
+
+    .nav-btn {
+      width: 100%; text-align: left; background: #2c2c2e; color: #ccc;
+      border: 1px solid #444; border-radius: 8px; padding: 9px 10px;
+      font-size: 12px; cursor: pointer; display: flex; justify-content: space-between;
+      margin-top: 8px; box-sizing: border-box;
+    }
+    .nav-btn:hover { background: #3a3a3c; color: #fff; }
+    .nav-btn .chip { color: #4da3ff; }
+    .site-row {
+      display: flex; justify-content: space-between; align-items: center; font-size: 12px;
+      background: #2c2c2e; padding: 7px 10px; border-radius: 6px; margin-bottom: 4px; cursor: pointer;
+    }
+    .site-row input { accent-color: #4da3ff; cursor: pointer; }
+    .site-row .tag { color: #999; font-size: 10px; margin-left: 6px; }
+    .inline-row { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+    .inline-row input[type="number"], .inline-row input[type="text"] {
+      background: #2c2c2e; color: #fff; border: 1px solid #444; border-radius: 6px;
+      padding: 6px 8px; font-size: 12px; box-sizing: border-box; min-width: 0;
+    }
+    #quickSkipSeconds { width: 70px; }
+    #quickSkipKey { flex: 1; cursor: pointer; text-align: center; }
+    #quickSkipKey:focus { border-color: #4da3ff; outline: none; }
+
+    .skip-sub { font-size: 11px; color: #999; margin: 0 0 4px; word-break: break-all; }
+    .modal-actions { display: flex; gap: 6px; margin-top: 12px; justify-content: flex-end; }
   </style>
 </head>
 <body>
@@ -81,7 +127,7 @@
   <div id="mainView">
     <div class="header">
       <h1>MDL-Sync</h1>
-      <button id="settingsBtn" title="Settings">⚙ Settings</button>
+      <button id="settingsBtn" class="header-btn" title="Settings">⚙ Settings</button>
     </div>
 
     <div class="card">
@@ -112,16 +158,39 @@
   <div id="mappedView" class="hidden">
     <div class="header">
       <h1>Mapped Titles</h1>
-      <button id="mappedBackBtn">← Back</button>
+      <button id="mappedBackBtn" class="header-btn">← Back</button>
     </div>
     <div id="mappings" class="empty">No titles mapped yet.</div>
   </div>
 
-  <!-- TELA DE OPÇÕES (mesma janela, sem abrir aba nova) -->
+  <!-- SKIP OP (tela própria, aberta pelo botão "skip op" em Mapped Titles) -->
+  <div id="skipOpView" class="hidden">
+    <div class="header">
+      <h1>Skip Opening</h1>
+      <button id="skipOpCancel" class="header-btn">← Back</button>
+    </div>
+    <p class="skip-sub" id="skipOpTitle"></p>
+    <label class="field">Opening starts at (m:ss)
+      <input id="skipOpFrom" type="text" placeholder="0:32" />
+    </label>
+    <label class="field">Skip to (m:ss)
+      <input id="skipOpTo" type="text" placeholder="1:40" />
+    </label>
+    <p class="hint" id="skipOpMsg">When an episode of this title reaches the first time, it jumps to the second one.</p>
+    <div class="modal-actions">
+      <button id="skipOpClear" class="small-btn hidden">Remove</button>
+      <button id="skipOpSave" class="small-btn primary">Save</button>
+    </div>
+  </div>
+
+  <!-- SETTINGS — página 1 (mesma janela, sem abrir aba nova) -->
   <div id="settingsView" class="hidden">
     <div class="header">
       <h1>Settings</h1>
-      <button id="backBtn">← Back</button>
+      <div class="header-btns">
+        <button id="backBtn" class="header-btn">← Back</button>
+        <button id="page2Btn" class="header-btn" title="More settings">More ›</button>
+      </div>
     </div>
 
     <h2>Auto-sync threshold</h2>
@@ -144,12 +213,87 @@
     </div>
     <p class="hint">When you reopen an episode, offers to continue from where you left off. Not used on WeTV and iQIYI.</p>
 
-    <div id="savedNote">Saved ✓</div>
+    <h2>Discord</h2>
+    <button id="discordBtn" class="nav-btn"><span>Discord Presence</span><span class="chip" id="discordChip">›</span></button>
+
+    <div class="saved-note">Saved ✓</div>
 
     <a class="help-button" href="https://github.com/cuscuzleitado/MDL-Sync/blob/main/README.md"
        target="_blank" rel="noopener">Need help?</a>
   </div>
 
+  <!-- SETTINGS — página 2 -->
+  <div id="settings2View" class="hidden">
+    <div class="header">
+      <h1>More settings</h1>
+      <button id="page2BackBtn" class="header-btn">← Back</button>
+    </div>
+
+    <h2>Sites</h2>
+    <button id="excludeBtn" class="nav-btn"><span>Excluded sites</span><span class="chip" id="excludeChip">›</span></button>
+    <p class="hint">Turn MDL-Sync off on specific sites.</p>
+
+    <h2>Quick skip</h2>
+    <div class="inline-row">
+      <input id="quickSkipSeconds" type="number" min="1" max="600" step="1" value="85" />
+      <span class="hint" style="margin:0">seconds</span>
+      <input id="quickSkipKey" type="text" readonly placeholder="Click, then press a key" />
+      <button id="quickSkipClear" class="small-btn">Clear</button>
+    </div>
+    <p class="hint">Press the key while watching to jump ahead by that many seconds. It only works on supported sites, and takes priority over the site’s own shortcut for the same key.</p>
+
+    <h2>Updates</h2>
+    <button id="changelogBtn" class="nav-btn"><span>Changelog</span><span class="chip">›</span></button>
+    <p class="hint">What changed in this version (English, Português, Español).</p>
+
+    <div class="saved-note">Saved ✓</div>
+  </div>
+
+  <!-- DISCORD PRESENCE -->
+  <div id="discordView" class="hidden">
+    <div class="header">
+      <h1>Discord Presence</h1>
+      <button id="discordBackBtn" class="header-btn">← Back</button>
+    </div>
+
+    <div class="threshold-options">
+      <label><input type="checkbox" data-extra="presenceEnabled" /><span>Show what I’m watching</span></label>
+    </div>
+    <p class="hint">Shows the drama, episode and progress on Discord as “Watching”.</p>
+
+    <h2>Discord Account</h2>
+    <div id="discordStatusLine" class="discord-status">Not logged in — using the MDL-Sync Presence app.</div>
+    <button id="discordLoginBtn" class="small-btn primary">Log in with Discord</button>
+    <button id="discordLogoutBtn" class="small-btn hidden">Log out</button>
+    <p class="hint">Logged in, the extension talks to Discord by itself — no app needed. It uses your account session, which Discord doesn’t officially support, so use it at your own risk.</p>
+    <label class="field">Status while watching
+      <select id="discordStatusSel">
+        <option value="online">Online</option>
+        <option value="idle">Idle</option>
+        <option value="dnd">Do not disturb</option>
+      </select>
+    </label>
+    <p id="discordMsg" class="hint"></p>
+
+    <h2>Show on these sites</h2>
+    <div id="presenceSiteList"></div>
+    <p class="hint">Viki, WeTV and iQIYI start off because PreMiD already covers them — turning them on can show two activities at once. “Seekee” covers 123flmsfree, 123pelicula, flixlat, cuevana19, dramasfree, solo-latino and similar sites.</p>
+
+    <div class="saved-note">Saved ✓</div>
+  </div>
+
+  <!-- EXCLUDED SITES -->
+  <div id="excludeView" class="hidden">
+    <div class="header">
+      <h1>Excluded sites</h1>
+      <button id="excludeBackBtn" class="header-btn">← Back</button>
+    </div>
+    <p class="hint" style="margin-top:0">Checked = MDL-Sync is on for that site. Uncheck a site to turn off everything there (sync, resume, skip, Discord). Reload the page after changing.</p>
+    <div id="excludeSiteList" style="margin-top:8px"></div>
+    <div class="saved-note">Saved ✓</div>
+  </div>
+
+  <script src="sites.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

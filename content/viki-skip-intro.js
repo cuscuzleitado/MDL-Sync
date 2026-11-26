@@ -7,6 +7,9 @@
 // que o próprio player do Viki mostra durante a abertura.
 // ============================================================
 
+// Site excluído nas Settings (More > Excluded sites): não faz nada.
+chrome.storage.local.get("excludedSites", ({ excludedSites }) => {
+  if (excludedSites && excludedSites.viki) return;
 (() => {
   "use strict";
 
@@ -83,3 +86,4 @@
   });
   setInterval(check, 1000);
 })();
+});

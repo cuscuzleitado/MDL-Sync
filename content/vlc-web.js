@@ -113,6 +113,81 @@ function vlcGetProgressFromDOM() {
 let vlcLastKey = null;
 let vlcSyncedForCurrentFile = false;
 
+// ------------------------------------------------------------
+// Discord presence do VLC (mesmo app local dos outros sites).
+// O VLC não passa pelo fluxo padrão do common.js, então manda o
+// estado daqui mesmo, a cada poll. O background junta com a
+// capa/total do MDL (se o drama já estiver mapeado) e entrega ao app.
+// ------------------------------------------------------------
+const VLC_PRESENCE_MIN_INTERVAL_MS = 5000;
+let vlcPresenceActive = false;
+let vlcPresenceLastSent = 0;
+let vlcPresenceLastPaused = null;
+let vlcPresenceLastTime = null;
+let vlcPresenceLastKey = null;
+
+function vlcPresenceEnabled() {
+  // PRESENCE_ENABLED é definido no common.js (mesmo escopo de content scripts).
+  const on = typeof PRESENCE_ENABLED === "undefined" || PRESENCE_ENABLED;
+  return on && !window.MDLSyncCommon._excluded;
+}
+
+function vlcClearPresence() {
+  if (!vlcPresenceActive) return;
+  vlcPresenceActive = false;
+  vlcPresenceLastPaused = null;
+  vlcPresenceLastTime = null;
+  window.MDLSyncCommon._sendPresence({ type: "PRESENCE_CLEAR" });
+}
+
+function vlcSendPresence(episodeData, status) {
+  const hasEpisode = status.length && status.length >= VLC_MIN_EPISODE_DURATION_SECONDS;
+  if (!vlcPresenceEnabled() || !hasEpisode || status.state === "stopped") {
+    vlcClearPresence();
+    return;
+  }
+
+  // /status.json diz se está tocando ou pausado; o plano B (DOM) não diz,
+  // então nesse caso considera pausado se o tempo não andou desde o último poll.
+  const paused =
+    typeof status.state === "string"
+      ? status.state !== "playing"
+      : vlcPresenceLastTime !== null && status.time === vlcPresenceLastTime;
+
+  // Reenvia a cada 5s, ou na hora se mudou play/pause, episódio ou teve seek.
+  const now = Date.now();
+  const expectedTime =
+    vlcPresenceLastTime === null || vlcPresenceLastPaused ? null : vlcPresenceLastTime + (now - vlcPresenceLastSent) / 1000;
+  const jumped = expectedTime !== null && Math.abs(status.time - expectedTime) > 3;
+  const changed =
+    paused !== vlcPresenceLastPaused || vlcPresenceLastKey !== vlcLastKey || jumped;
+
+  vlcPresenceLastTime = status.time;
+  if (!changed && now - vlcPresenceLastSent < VLC_PRESENCE_MIN_INTERVAL_MS) return;
+
+  vlcPresenceLastSent = now;
+  vlcPresenceLastPaused = paused;
+  vlcPresenceLastKey = vlcLastKey;
+  vlcPresenceActive = true;
+
+  window.MDLSyncCommon._sendPresence({
+    type: "PRESENCE_UPDATE",
+    data: {
+      key: episodeData.key,
+      site: episodeData.site,
+      title: episodeData.title,
+      season: episodeData.season,
+      episode: episodeData.episode,
+      currentTime: status.time,
+      duration: status.length,
+      rate: status.rate || 1,
+      paused
+    }
+  });
+}
+
+window.addEventListener("pagehide", () => vlcClearPresence());
+
 async function vlcPoll() {
   const filename = vlcFindFilenameOnPage();
   if (!filename) return;
@@ -144,9 +219,23 @@ async function vlcPoll() {
     const isFinalEpisode = totalEpisodes !== null && episodeData.episode === totalEpisodes;
     const existingRating = isFinalEpisode ? await window.MDLSyncCommon._getRating(episodeData.key) : null;
 
+    // O VLC não passa pelo fluxo padrão do common.js, então salva aqui o
+    // "último detectado" que o popup mostra (capa, nota, episódio).
+    try {
+      chrome.storage.local.set({ lastDetected: episodeData });
+    } catch {
+      // contexto da extensão invalidado — ignora
+    }
+
     console.log("[MDL Sync] (VLC) Episódio detectado:", episodeData);
     window.MDLSyncCommon._createSyncBadge(episodeData, { alreadySynced, isFinalEpisode, existingRating });
     vlcSyncedForCurrentFile = alreadySynced;
+  }
+
+  try {
+    vlcSendPresence(episodeData, status);
+  } catch (err) {
+    console.warn("[MDL Sync] (VLC) Presence error:", err);
   }
 
   if (vlcSyncedForCurrentFile) return;
@@ -171,8 +260,18 @@ async function vlcPoll() {
   }
 }
 
-setInterval(vlcPoll, VLC_POLL_INTERVAL_MS);
-vlcPoll();
+// Site excluído nas Settings (More > Excluded sites): não faz nada aqui.
+chrome.storage.local.get("excludedSites", ({ excludedSites }) => {
+  const info = mdlSiteInfo("vlc-local");
+  window.MDLSyncCommon._siteInfo = info;
+  window.MDLSyncCommon._excluded = Boolean((excludedSites || {})[info.id]);
+  if (window.MDLSyncCommon._excluded) {
+    console.log("[MDL Sync] (VLC) Site excluído nas Settings — extensão desligada aqui.");
+    return;
+  }
+  setInterval(vlcPoll, VLC_POLL_INTERVAL_MS);
+  vlcPoll();
+});
 
 // ============================================================
 // Pra ativar, adicione estas duas partes no manifest.json:

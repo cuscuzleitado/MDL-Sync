@@ -1,9 +1,17 @@
 {
   "manifest_version": 3,
   "name": "MDL-Sync",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Sincroniza automaticamente o progresso de episódios no MyDramaList enquanto você assiste.",
-  "permissions": ["storage", "tabs", "scripting", "notifications", "alarms"],
+  "permissions": [
+    "storage",
+    "tabs",
+    "scripting",
+    "notifications",
+    "alarms",
+    "webRequest",
+    "offscreen"
+  ],
   "host_permissions": [
     "https://mydramalist.com/*",
     "https://clubdodorama.com/*",
@@ -20,33 +28,62 @@
     "https://*.dramasfree.com/*",
     "https://*.solo-latino.com/*",
     "https://tokusatsus.com/*",
-    "http://localhost:8080/*"
+    "http://localhost:8080/*",
+    "https://es.cuevana4br.com/*",
+    "https://video.playspelis.com/*",
+    "https://lostdramas.blogspot.com/*",
+    "http://127.0.0.1:17831/*",
+    "https://discord.com/*"
   ],
-  "optional_host_permissions": ["<all_urls>"],
+  "optional_host_permissions": [
+    "<all_urls>"
+  ],
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": ["https://clubdodorama.com/episodios/*"],
-      "js": ["content/common.js", "content/clubdodorama.js"],
+      "matches": [
+        "https://clubdodorama.com/episodios/*"
+      ],
+      "js": [
+        "sites.js",
+        "content/common.js",
+        "content/clubdodorama.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://www.viki.com/*"],
-      "js": ["content/common.js", "content/viki.js"],
+      "matches": [
+        "https://www.viki.com/*"
+      ],
+      "js": [
+        "sites.js",
+        "content/common.js",
+        "content/viki.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://www.viki.com/*"],
-      "js": ["content/viki-skip-intro.js"],
+      "matches": [
+        "https://www.viki.com/*"
+      ],
+      "js": [
+        "content/viki-skip-intro.js"
+      ],
       "all_frames": true,
       "match_about_blank": true,
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://wetv.vip/en/play/*"],
-      "js": ["content/common.js", "content/wetv.js"],
+      "matches": [
+        "https://wetv.vip/en/play/*"
+      ],
+      "js": [
+        "sites.js",
+        "content/common.js",
+        "content/wetv.js"
+      ],
       "run_at": "document_idle"
     },
     {
@@ -55,12 +92,22 @@
         "https://kisskh.mx/Drama/*",
         "https://kisskh.xyz/Drama/*"
       ],
-      "js": ["content/common.js", "content/kisskh.js"],
+      "js": [
+        "sites.js",
+        "content/common.js",
+        "content/kisskh.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://www.iq.com/play/*"],
-      "js": ["content/common.js", "content/iqiyi.js"],
+      "matches": [
+        "https://www.iq.com/play/*"
+      ],
+      "js": [
+        "sites.js",
+        "content/common.js",
+        "content/iqiyi.js"
+      ],
       "run_at": "document_idle"
     },
     {
@@ -70,19 +117,48 @@
         "https://flixlat.com/*/detail/drama/*",
         "https://play.cuevana19.com/*/detail/drama/*",
         "https://*.dramasfree.com/*/detail/drama/*",
-        "https://*.solo-latino.com/*/detail/drama/*"
+        "https://*.solo-latino.com/*/detail/drama/*",
+        "https://es.cuevana4br.com/*/detail/drama*",
+        "https://video.playspelis.com/*/detail/drama/*"
       ],
-      "js": ["content/common.js", "content/detail-drama-template.js"],
+      "js": [
+        "sites.js",
+        "content/common.js",
+        "content/detail-drama-template.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://tokusatsus.com/app/player.php*"],
-      "js": ["content/common.js", "content/tokudrive.js"],
+      "matches": [
+        "https://tokusatsus.com/player.php*"
+      ],
+      "js": [
+        "sites.js",
+        "content/common.js",
+        "content/tokudrive.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["http://localhost:8080/*"],
-      "js": ["content/common.js", "content/vlc-web.js"],
+      "matches": [
+        "https://lostdramas.blogspot.com/*"
+      ],
+      "js": [
+        "sites.js",
+        "content/common.js",
+        "content/lostdramas.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "http://localhost:8080/*"
+      ],
+      "js": [
+        "sites.js",
+        "content/common.js",
+        "content/vlc-web.js"
+      ],
       "run_at": "document_idle"
     }
   ],

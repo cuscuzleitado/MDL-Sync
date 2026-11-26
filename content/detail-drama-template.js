@@ -34,11 +34,18 @@ const SITE_PARSER = {
     return { season: 1, episode: parseInt(match[2], 10), slug: match[1] };
   },
 
-  // O <title> da aba nesse template geralmente já vem limpo, só com o
-  // nome do drama.
+  // O <title> da aba nesse template às vezes vem com tags entre colchetes
+  // antes (ou depois) do nome, ex: "[Português Legendas]How Do We
+  // Relationship?" ou "[Português Dublado]...". Remove só essas tags (o
+  // texto dentro dos []) e deixa o nome do drama. Colchetes no MEIO do
+  // nome ficam intactos. Se sobrar nada, volta pro título original.
   getTitle() {
     const raw = document.title.trim();
-    return raw || null;
+    const clean = raw
+      .replace(/^(\s*\[[^\]]*\]\s*)+/, "")
+      .replace(/(\s*\[[^\]]*\]\s*)+$/, "")
+      .trim();
+    return clean || raw || null;
   }
 };
 

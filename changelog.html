@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>MDL-Sync — Changelog</title>
+  <style>
+    body { margin: 0; font-family: sans-serif; background: #1c1c1e; color: #fff; }
+    main { max-width: 680px; margin: 0 auto; padding: 32px 20px 60px; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    .version { color: #4da3ff; font-size: 14px; margin-bottom: 18px; }
+    .langs { display: flex; gap: 8px; margin-bottom: 18px; }
+    .langs button {
+      background: #2c2c2e; color: #ccc; border: 1px solid #444; border-radius: 8px;
+      padding: 7px 14px; font-size: 13px; cursor: pointer;
+    }
+    .langs button:hover { background: #3a3a3c; color: #fff; }
+    .langs button.active { background: #4da3ff; border-color: #4da3ff; color: #fff; font-weight: 600; }
+    ul { padding-left: 20px; margin: 0; }
+    li { margin-bottom: 12px; line-height: 1.45; font-size: 14px; color: #ddd; }
+    .older { margin-top: 24px; font-size: 12px; color: #999; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1 id="title">What’s new</h1>
+    <div class="version" id="version"></div>
+    <div class="langs">
+      <button data-lang="en">English</button>
+      <button data-lang="pt">Português</button>
+      <button data-lang="es">Español</button>
+    </div>
+    <ul id="notes"></ul>
+    <div class="older" id="older"></div>
+  </main>
+  <script src="changelog-data.js"></script>
+  <script src="changelog.js"></script>
+</body>
+</html>
