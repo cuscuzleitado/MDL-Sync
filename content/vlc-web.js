@@ -188,6 +188,95 @@ function vlcSendPresence(episodeData, status) {
 
 window.addEventListener("pagehide", () => vlcClearPresence());
 
+// ------------------------------------------------------------
+// Pulador (tecla de atalho) e Skip op no VLC
+//
+// A página do VLC Web não tem <video> (é só um painel de controle), então
+// aqui o pulo é feito mandando o comando "seek" pro próprio VLC, pela API
+// dele (/requests/status.json?command=seek&val=...). A tecla só funciona
+// com a aba do VLC Web em foco (é nela que a extensão roda).
+// ------------------------------------------------------------
+let vlcQuickSkip = null; // { seconds, key: { code, ctrl, alt, shift } | null }
+let vlcSkipOpMap = {}; // { [key]: { from, to } }
+let vlcLastStatus = null;
+let vlcSkipOpKey = null;
+let vlcSkipOpArmed = false;
+
+chrome.storage.local.get(["quickSkip", "skipOpMap"], ({ quickSkip, skipOpMap }) => {
+  vlcQuickSkip = quickSkip || null;
+  vlcSkipOpMap = skipOpMap || {};
+});
+
+chrome.storage.onChanged.addListener((changes) => {
+  if (changes.quickSkip) vlcQuickSkip = changes.quickSkip.newValue || null;
+  if (changes.skipOpMap) vlcSkipOpMap = changes.skipOpMap.newValue || {};
+});
+
+// value: "+85S" (avança 85s) ou "100S" (vai pro segundo 100).
+async function vlcSeek(value) {
+  try {
+    const res = await fetch(`/requests/status.json?command=seek&val=${encodeURIComponent(value)}`, {
+      credentials: "include",
+      cache: "no-store"
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn("[MDL Sync] (VLC) Seek falhou:", err);
+    return false;
+  }
+}
+
+document.addEventListener(
+  "keydown",
+  async (e) => {
+    const q = vlcQuickSkip;
+    if (!q || !q.key || !q.seconds) return;
+    if (window.MDLSyncCommon._excluded) return;
+    if (e.code !== q.key.code || e.ctrlKey !== Boolean(q.key.ctrl) || e.altKey !== Boolean(q.key.alt) || e.shiftKey !== Boolean(q.key.shift) || e.metaKey) return;
+
+    const t = e.target;
+    if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return; // digitando
+
+    const st = vlcLastStatus;
+    if (!st || st.state === "stopped" || !st.length || st.length < VLC_MIN_EPISODE_DURATION_SECONDS) {
+      console.log("[MDL Sync] (VLC) Quick skip: tecla reconhecida, mas não há episódio tocando no VLC.");
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+    if (await vlcSeek(`+${q.seconds}S`)) {
+      window.MDLSyncCommon._toast(`+${q.seconds}s`);
+      console.log(`[MDL Sync] (VLC) Quick skip: +${q.seconds}s`);
+    }
+  },
+  true
+);
+
+// Mesma regra do skip op dos sites: pula quando chega em "from", uma vez
+// por abertura do episódio (reativa quando o vídeo volta pro começo).
+function vlcApplySkipOp(episodeData, status) {
+  if (vlcSkipOpKey !== vlcLastKey) {
+    vlcSkipOpKey = vlcLastKey;
+    vlcSkipOpArmed = true;
+  }
+  if (status.time < 1) vlcSkipOpArmed = true; // episódio aberto/reaberto em 0:00
+
+  if (!vlcSkipOpArmed || window.MDLSyncCommon._excluded) return;
+  const rule = vlcSkipOpMap[episodeData.key];
+  if (!rule || !(rule.to > rule.from)) return;
+  if (!status.length || status.length < VLC_MIN_EPISODE_DURATION_SECONDS || status.state === "stopped") return;
+
+  if (status.time >= rule.to) {
+    vlcSkipOpArmed = false; // já passou da abertura
+  } else if (status.time >= rule.from) {
+    vlcSkipOpArmed = false;
+    vlcSeek(`${Math.floor(rule.to)}S`).then((ok) => {
+      if (ok) window.MDLSyncCommon._toast("Opening skipped");
+    });
+  }
+}
+
 async function vlcPoll() {
   const filename = vlcFindFilenameOnPage();
   if (!filename) return;
@@ -208,6 +297,7 @@ async function vlcPoll() {
 
   const status = (await vlcFetchStatus()) || vlcGetProgressFromDOM();
   if (!status) return;
+  vlcLastStatus = status;
 
   const currentKey = `${episodeData.key}:${episodeData.episode}`;
   if (currentKey !== vlcLastKey) {
@@ -236,6 +326,11 @@ async function vlcPoll() {
     vlcSendPresence(episodeData, status);
   } catch (err) {
     console.warn("[MDL Sync] (VLC) Presence error:", err);
+  }
+  try {
+    vlcApplySkipOp(episodeData, status);
+  } catch (err) {
+    console.warn("[MDL Sync] (VLC) Skip op error:", err);
   }
 
   if (vlcSyncedForCurrentFile) return;
