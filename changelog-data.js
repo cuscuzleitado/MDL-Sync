@@ -47,8 +47,8 @@ const MDL_CHANGELOG = {
   },
   titles: { en: "What’s new", pt: "Novidades", es: "Novedades" },
   older: {
-    en: "Older versions: see the Changelog section of the README.",
-    pt: "Versões anteriores: veja a seção Changelog do README.",
-    es: "Versiones anteriores: consulta la sección Changelog del README."
+    en: "Previous versions: see the Changelog.md on GitHub.",
+    pt: "Versões anteriores: veja o Changelog.md no Github.",
+    es: "Versiones anteriores: consulta Changelog.md en Github."
   }
 };
