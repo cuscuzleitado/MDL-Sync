@@ -65,7 +65,11 @@ function renderLastDetected(lastDetected, mdlMap) {
 
   const nameEl = document.createElement("div");
   nameEl.className = "drama-name";
-  nameEl.textContent = lastDetected.title;
+  // Nome do drama no MDL (sem o ano) quando já se sabe; senão o do site.
+  nameEl.textContent = (entry && typeof entry !== "string" && entry.title) || lastDetected.title;
+  if (url && !(entry && typeof entry !== "string" && entry.title)) {
+    chrome.runtime.sendMessage({ type: "BACKFILL_MDL_TITLE", key: lastDetected.key, url });
+  }
 
   const epEl = document.createElement("div");
   epEl.className = "episode-line";
@@ -155,6 +159,10 @@ function renderMappings(mdlMap) {
     const row = document.createElement("div");
     row.className = "map-row";
 
+    if (url && !(entry && typeof entry !== "string" && entry.title)) {
+      chrome.runtime.sendMessage({ type: "BACKFILL_MDL_TITLE", key, url });
+    }
+
     const info = document.createElement("div");
     info.className = "map-info";
 
@@ -204,10 +212,18 @@ function renderMappings(mdlMap) {
   }
 }
 
-chrome.storage.local.get(["lastDetected", "mdlMap", "skipOpMap"], ({ lastDetected, mdlMap, skipOpMap }) => {
-  currentSkipOpMap = skipOpMap || {};
-  renderLastDetected(lastDetected, mdlMap);
-  renderMappings(mdlMap);
+function renderMain() {
+  chrome.storage.local.get(["lastDetected", "mdlMap", "skipOpMap"], ({ lastDetected, mdlMap, skipOpMap }) => {
+    currentSkipOpMap = skipOpMap || {};
+    renderLastDetected(lastDetected, mdlMap);
+    renderMappings(mdlMap);
+  });
+}
+renderMain();
+
+// Quando o nome de um drama chega do MDL, atualiza a tela (principal e Mapped Titles).
+chrome.storage.onChanged.addListener((changes) => {
+  if (changes.mdlMap) renderMain();
 });
 
 // --- Troca de tela ---
