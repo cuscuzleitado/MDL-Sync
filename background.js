@@ -252,9 +252,9 @@ function markEpisodeWatchedOnMDL(episodeNumber, rating) {
 
     // Nome do drama no MDL (título da aba sem o " - MyDramaList" e sem o ano),
     // usado pra identificar o mapeamento na lista de Mapped Titles.
+    const filmTitleEl = document.querySelector("h1.film-title");
     const mdlTitle =
-      document.title
-        .replace(/\s*-\s*MyDramaList.*$/i, "")
+      (filmTitleEl ? filmTitleEl.textContent : document.title.replace(/\s*-\s*MyDramaList.*$/i, ""))
         .replace(/\s*\(\d{4}\)\s*$/, "")
         .trim() || null;
 
@@ -483,8 +483,10 @@ async function handlePresenceUpdate(data, tabId) {
   if (typeof entry === "string") entry = { url: entry };
   entry = entry || {};
 
+  if (entry.url && !entry.title) backfillMdlTitle(data.key, entry.url); // mapeamento antigo: busca o nome no MDL
+
   deliverPresence("/presence", {
-    title: data.title,
+    title: entry.title || data.title,
     season: data.season || null,
     episode: data.episode,
     total: entry.total || null,
@@ -806,4 +808,65 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   }
 
   if (changelogSeenVersion !== version) await chrome.storage.local.set({ changelogSeenVersion: version });
+});
+
+// ============================================================
+// NOME DO DRAMA (vindo do MyDramaList)
+//
+// O nome mostrado no popup e no Discord é o do <h1 class="film-title"> da
+// página do MDL, sem o "(ano)" — ex: "The White Olive Tree (2025)" vira
+// "The White Olive Tree". Mapeamentos novos já guardam esse nome no sync;
+// os antigos (sem nome salvo) têm o nome buscado uma vez na página do MDL.
+// ============================================================
+function cleanMdlTitle(raw) {
+  return (
+    String(raw || "")
+      .replace(/<[^>]*>/g, "")
+      .replace(/&amp;/g, "&")
+      .replace(/&#0?39;|&apos;/g, "'")
+      .replace(/&quot;/g, '"')
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/\s*\(\d{4}\)\s*$/, "")
+      .trim() || null
+  );
+}
+
+const mdlTitleInflight = new Set();
+const mdlTitleFailures = new Map();
+
+async function backfillMdlTitle(key, url) {
+  if (mdlTitleInflight.has(key)) return;
+  const failedAt = mdlTitleFailures.get(key);
+  if (failedAt && Date.now() - failedAt < 10 * 60 * 1000) return; // não insiste se falhou há pouco
+  mdlTitleInflight.add(key);
+
+  try {
+    const res = await fetch(url, { credentials: "omit" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const html = await res.text();
+    const match = /<h1[^>]*class="[^"]*film-title[^"]*"[^>]*>([\s\S]*?)<\/h1>/i.exec(html);
+    const title = match ? cleanMdlTitle(match[1]) : null;
+    if (!title) throw new Error("título não encontrado na página");
+
+    const { mdlMap } = await chrome.storage.local.get("mdlMap");
+    const entry = mdlMap && mdlMap[key];
+    if (!entry) return;
+    mdlMap[key] = typeof entry === "string" ? { url: entry, title } : { ...entry, title };
+    await chrome.storage.local.set({ mdlMap });
+  } catch (err) {
+    mdlTitleFailures.set(key, Date.now());
+    console.warn("[MDL Sync] Não consegui buscar o nome do drama no MDL:", err.message);
+  } finally {
+    mdlTitleInflight.delete(key);
+  }
+}
+
+// O popup pede o nome dos mapeamentos antigos quando abre.
+chrome.runtime.onMessage.addListener((message) => {
+  if (message && message.type === "BACKFILL_MDL_TITLE" && message.key && message.url) {
+    backfillMdlTitle(message.key, message.url);
+  }
 });
