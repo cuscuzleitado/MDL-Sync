@@ -177,13 +177,13 @@ function renderMappings(mdlMap) {
     const rule = currentSkipOpMap[key];
     const skipBtn = document.createElement("button");
     skipBtn.className = "skip-btn" + (rule ? " on" : "");
-    skipBtn.textContent = "skip op";
+    skipBtn.textContent = "Skip OP";
     skipBtn.title = rule ? `Skips ${formatTime(rule.from)} → ${formatTime(rule.to)}` : "Skip the opening automatically";
     skipBtn.onclick = () => openSkipOp(key);
     actions.appendChild(skipBtn);
 
     const removeBtn = document.createElement("button");
-    removeBtn.textContent = "remove";
+    removeBtn.textContent = "Remove";
     removeBtn.onclick = async () => {
       const { mdlMap, skipOpMap } = await chrome.storage.local.get(["mdlMap", "skipOpMap"]);
       delete mdlMap[key];
